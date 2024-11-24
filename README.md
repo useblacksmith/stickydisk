@@ -1,6 +1,6 @@
-# Delete Blacksmith Cache Action
+# Blacksmith Cache Delete Action
 
-A GitHub Action to delete caches from Blacksmith's cache storage. This action allows you to delete either a specific cache version or all versions of a cache key.
+A GitHub Action to delete caches from Blacksmith's cache storage. This action allows you to delete either a specific cache version or all versions of a cache key. This action only works Blacksmith runners.
 
 ## Usage
 
