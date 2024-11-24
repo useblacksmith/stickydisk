@@ -1,0 +1,15 @@
+# TODO: Modify the following metadata according to the project's specifications.
+
+name: Mkdir Action
+author: Alfi Maulana
+description: Create a new directory
+branding:
+  icon: folder-plus
+  color: black
+inputs:
+  path:
+    description: Path of the directory to create
+    required: true
+runs:
+  using: node20
+  main: dist/main.bundle.mjs
