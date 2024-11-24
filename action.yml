@@ -1,15 +1,16 @@
-# TODO: Modify the following metadata according to the project's specifications.
-
-name: Mkdir Action
-author: Alfi Maulana
-description: Create a new directory
+name: "Delete Blacksmith Cache"
+author: Aayush Shah
+description: "Deletes a cache or specific cache version from Blacksmith"
 branding:
   icon: folder-plus
   color: black
 inputs:
-  path:
-    description: Path of the directory to create
+  key:
+    description: "The cache key to delete"
     required: true
+  version:
+    description: "Specific version of the cache to delete (optional)"
+    required: false
 runs:
-  using: node20
-  main: dist/main.bundle.mjs
+  using: "node20"
+  main: "dist/index.js"

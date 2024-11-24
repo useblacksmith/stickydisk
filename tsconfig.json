@@ -1,13 +1,13 @@
 {
-  "include": ["src"],
-  "exclude": ["**/*.test.ts"],
   "compilerOptions": {
-    "exactOptionalPropertyTypes": true,
+    "target": "es2019",
+    "module": "esnext",
+    "moduleResolution": "node",
+    "importHelpers": true,
     "strict": true,
-    "module": "node16",
-    "moduleResolution": "node16",
     "esModuleInterop": true,
-    "target": "es2022",
-    "skipLibCheck": true
-  }
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["src/**/*"]
 }

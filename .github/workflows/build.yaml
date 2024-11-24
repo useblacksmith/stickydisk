@@ -17,21 +17,18 @@ jobs:
         with:
           node-version-file: .nvmrc
 
-      - name: Setup Yarn
-        uses: threeal/setup-yarn-action@v2.0.0
+      - name: Install Dependencies
+        run: npm ci
 
       - name: Check Formatting
         run: |
-          yarn format
+          npm run format
           git diff && git diff-index --quiet --exit-code HEAD
 
       - name: Check Lint
-        run: yarn lint
-
-      - name: Test Action
-        run: yarn test
+        run: npm run lint
 
       - name: Build Action
         run: |
-          yarn build
+          npm run build
           git diff && git diff-index --quiet --exit-code HEAD
