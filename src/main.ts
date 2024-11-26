@@ -48,7 +48,7 @@ export async function deleteCache({
 
   if (response.status === 404) {
     info(
-      `Cache not found: ${cacheKey}${cacheVersion ? `@${cacheVersion}` : ""}`
+      `Cache not found${cacheKey ? `: ${cacheKey}` : ""}${cacheVersion ? `@${cacheVersion}` : ""}`
     );
   } else {
     const data = await response.json();

@@ -31442,7 +31442,7 @@ async function deleteCache(_a) {
         throw new Error(`Failed to delete cache: ${response.status} ${response.statusText}`);
     }
     if (response.status === 404) {
-        (0,_actions_core__WEBPACK_IMPORTED_MODULE_0__.info)(`Cache not found: ${cacheKey}${cacheVersion ? `@${cacheVersion}` : ""}`);
+        (0,_actions_core__WEBPACK_IMPORTED_MODULE_0__.info)(`Cache not found${cacheKey ? `: ${cacheKey}` : ""}${cacheVersion ? `@${cacheVersion}` : ""}`);
     }
     else {
         const data = await response.json();
