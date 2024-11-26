@@ -185,4 +185,15 @@ describe("deleteCache", () => {
       })
     ).rejects.toThrow("Failed to delete cache: 500 Internal Server Error");
   });
+
+  it("should fail if version is specified with empty key", async () => {
+    await expect(
+      deleteCache({
+        cacheKey: "",
+        cacheVersion: "v1.0",
+        prefix: true,
+        ...defaultParams,
+      })
+    ).rejects.toThrow("Cannot specify version when using empty key");
+  });
 });
