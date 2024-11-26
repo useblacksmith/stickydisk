@@ -7,10 +7,14 @@ branding:
 inputs:
   key:
     description: "The cache key to delete"
-    required: true
+    required: false
   version:
     description: "Specific version of the cache to delete (optional)"
     required: false
+  prefix:
+    description: "Treat key as a prefix for bulk deletion"
+    required: false
+    default: "false"
 runs:
   using: "node20"
   main: "dist/index.js"
