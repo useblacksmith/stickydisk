@@ -20,6 +20,7 @@ describe("deleteCache", () => {
       ok: true,
       status: 200,
       statusText: "OK",
+      json: () => Promise.resolve({ deleted: 1 }),
     } as Response);
   });
 
@@ -51,6 +52,7 @@ describe("deleteCache", () => {
     expect(mockedInfo).toHaveBeenCalledWith(
       "Successfully deleted cache: npm-cache"
     );
+    expect(mockedInfo).toHaveBeenCalledWith("Deleted 1 cache entries");
   });
 
   it("should send DELETE request for a specific cache version", async () => {
@@ -75,9 +77,17 @@ describe("deleteCache", () => {
     expect(mockedInfo).toHaveBeenCalledWith(
       "Successfully deleted cache version: npm-cache@v1.0"
     );
+    expect(mockedInfo).toHaveBeenCalledWith("Deleted 1 cache entries");
   });
 
   it("should send DELETE request with prefix parameter", async () => {
+    mockedFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      json: () => Promise.resolve({ deleted: 5 }),
+    } as Response);
+
     await deleteCache({
       cacheKey: "npm-",
       prefix: true,
@@ -96,10 +106,20 @@ describe("deleteCache", () => {
         },
       }
     );
-    expect(mockedInfo).toHaveBeenCalledWith("Successfully deleted cache: npm-");
+    expect(mockedInfo).toHaveBeenCalledWith(
+      "Successfully deleted caches with prefix: npm-"
+    );
+    expect(mockedInfo).toHaveBeenCalledWith("Deleted 5 cache entries");
   });
 
   it("should send DELETE request with empty key and prefix parameter", async () => {
+    mockedFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      json: () => Promise.resolve({ deleted: 10 }),
+    } as Response);
+
     await deleteCache({
       cacheKey: "",
       prefix: true,
@@ -118,7 +138,20 @@ describe("deleteCache", () => {
         },
       }
     );
-    expect(mockedInfo).toHaveBeenCalledWith("Successfully deleted cache: ");
+    expect(mockedInfo).toHaveBeenCalledWith(
+      "Successfully deleted caches with prefix: "
+    );
+    expect(mockedInfo).toHaveBeenCalledWith("Deleted 10 cache entries");
+  });
+
+  it("should fail if key is empty and prefix is not true", async () => {
+    await expect(
+      deleteCache({
+        cacheKey: "",
+        prefix: false,
+        ...defaultParams,
+      })
+    ).rejects.toThrow("Cache key cannot be empty unless prefix is true");
   });
 
   it("should handle 404 response", async () => {
@@ -126,6 +159,7 @@ describe("deleteCache", () => {
       ok: false,
       status: 404,
       statusText: "Not Found",
+      json: () => Promise.resolve({}),
     } as Response);
 
     await deleteCache({
@@ -141,6 +175,7 @@ describe("deleteCache", () => {
       ok: false,
       status: 500,
       statusText: "Internal Server Error",
+      json: () => Promise.resolve({}),
     } as Response);
 
     await expect(
@@ -149,15 +184,5 @@ describe("deleteCache", () => {
         ...defaultParams,
       })
     ).rejects.toThrow("Failed to delete cache: 500 Internal Server Error");
-  });
-
-  it("should fail if key is empty and prefix is not true", async () => {
-    await expect(
-      deleteCache({
-        cacheKey: "",
-        prefix: false,
-        ...defaultParams,
-      })
-    ).rejects.toThrow("Cache key cannot be empty unless prefix is true");
   });
 });

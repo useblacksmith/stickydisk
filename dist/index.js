@@ -31445,7 +31445,11 @@ async function deleteCache(_a) {
         (0,_actions_core__WEBPACK_IMPORTED_MODULE_0__.info)(`Cache not found: ${cacheKey}${cacheVersion ? `@${cacheVersion}` : ""}`);
     }
     else {
-        (0,_actions_core__WEBPACK_IMPORTED_MODULE_0__.info)(`Successfully deleted cache${cacheVersion ? " version" : ""}: ${cacheKey}${cacheVersion ? `@${cacheVersion}` : ""}`);
+        const data = await response.json();
+        (0,_actions_core__WEBPACK_IMPORTED_MODULE_0__.info)(`Successfully deleted ${prefix ? "caches with prefix" : "cache"}${cacheVersion ? " version" : ""}: ${cacheKey}${cacheVersion ? `@${cacheVersion}` : ""}`);
+        if (data.deleted !== undefined) {
+            (0,_actions_core__WEBPACK_IMPORTED_MODULE_0__.info)(`Deleted ${data.deleted} cache entries`);
+        }
     }
 }
 async function run() {

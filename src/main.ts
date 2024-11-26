@@ -51,11 +51,15 @@ export async function deleteCache({
       `Cache not found: ${cacheKey}${cacheVersion ? `@${cacheVersion}` : ""}`
     );
   } else {
+    const data = await response.json();
     info(
-      `Successfully deleted cache${cacheVersion ? " version" : ""}: ${cacheKey}${
-        cacheVersion ? `@${cacheVersion}` : ""
-      }`
+      `Successfully deleted ${prefix ? "caches with prefix" : "cache"}${
+        cacheVersion ? " version" : ""
+      }: ${cacheKey}${cacheVersion ? `@${cacheVersion}` : ""}`
     );
+    if (data.deleted !== undefined) {
+      info(`Deleted ${data.deleted} cache entries`);
+    }
   }
 }
 
