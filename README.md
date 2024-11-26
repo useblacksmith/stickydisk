@@ -14,10 +14,13 @@ A GitHub Action to delete caches from Blacksmith's cache storage. This action al
 
 ## Inputs
 
-| Input     | Description                             | Required |
-| --------- | --------------------------------------- | -------- |
-| `key`     | The cache key to delete                 | Yes      |
-| `version` | Specific version of the cache to delete | No       |
+| Input     | Description                             | Required | Default |
+| --------- | --------------------------------------- | -------- | ------- |
+| `key`     | The cache key to delete                 | No\*     | -       |
+| `version` | Specific version of the cache to delete | No       | -       |
+| `prefix`  | Treat key as a prefix for bulk deletion | No       | false   |
+
+\* Required unless `prefix` is true, in which case it can be empty to match all cache keys
 
 ## Examples
 
@@ -38,6 +41,26 @@ A GitHub Action to delete caches from Blacksmith's cache storage. This action al
   with:
     key: npm-cache
     version: v1.0
+```
+
+### Delete All Caches with a Prefix
+
+```yaml
+- name: Delete All npm Caches
+  uses: useblacksmith/cache-delete@v1
+  with:
+    key: npm-
+    prefix: true
+```
+
+### Delete All Caches
+
+```yaml
+- name: Delete All Caches
+  uses: useblacksmith/cache-delete@v1
+  with:
+    key: ""
+    prefix: true
 ```
 
 ## Error Handling
