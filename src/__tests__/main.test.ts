@@ -154,6 +154,17 @@ describe("deleteCache", () => {
     ).rejects.toThrow("Cache key cannot be empty unless prefix is true");
   });
 
+  it("should fail if version is specified with prefix", async () => {
+    await expect(
+      deleteCache({
+        cacheKey: "npm-cache",
+        cacheVersion: "v1.0",
+        prefix: true,
+        ...defaultParams,
+      })
+    ).rejects.toThrow("Cannot specify version when using prefix");
+  });
+
   it("should handle 404 response", async () => {
     mockedFetch.mockResolvedValue({
       ok: false,

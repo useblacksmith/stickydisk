@@ -31430,6 +31430,9 @@ async function deleteCache(_a) {
     if (cacheVersion && !cacheKey) {
         throw new Error("Cannot specify version when using empty key");
     }
+    if (prefix && cacheVersion) {
+        throw new Error("Cannot specify version when using prefix");
+    }
     const resource = cacheVersion ? `${cacheKey}/${cacheVersion}` : cacheKey;
     const url = `${baseUrl}/caches/${resource}`;
     const response = await node_fetch__WEBPACK_IMPORTED_MODULE_1___default()(prefix ? `${url}?prefix` : url, {

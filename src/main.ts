@@ -29,6 +29,9 @@ export async function deleteCache({
   if (cacheVersion && !cacheKey) {
     throw new Error("Cannot specify version when using empty key");
   }
+  if (prefix && cacheVersion) {
+    throw new Error("Cannot specify version when using prefix");
+  }
 
   const resource = cacheVersion ? `${cacheKey}/${cacheVersion}` : cacheKey;
   const url = `${baseUrl}/caches/${resource}`;
