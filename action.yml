@@ -1,20 +1,17 @@
-name: "Delete Blacksmith Cache"
-author: Aayush Shah
-description: "Deletes a cache or specific cache version from Blacksmith"
+name: "Blacksmith Sticky Disk"
+author: Aditya Maru
+description: "Creates a sticky disk on Blacksmith"
 branding:
   icon: folder-plus
   color: black
 inputs:
   key:
-    description: "The cache key to delete"
-    required: false
-  version:
-    description: "Specific version of the cache to delete (optional)"
-    required: false
-  prefix:
-    description: "Treat key as a prefix for bulk deletion"
-    required: false
-    default: "false"
+    description: "A unique key to identify the sticky disk"
+    required: true
+  path:
+    description: "The path at which to mount the sticky disk"
+    required: true
 runs:
   using: "node20"
   main: "dist/index.js"
+  post: "dist/post/index.js"

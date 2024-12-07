@@ -1,76 +1,26 @@
-# Blacksmith Cache Delete Action
+# Blacksmith Sticky Disk Action
 
-A GitHub Action to delete caches from Blacksmith's cache storage. This action allows you to delete either a specific cache version or all versions of a cache key. This action only works Blacksmith runners.
+A GitHub Action that helps persist state written to disk across jobs. Each sticky disk is backed by local NVMe storage and is formmatted as an ext4 filesystem.
+
+Some common use cases of this action include:
+
+- Caching Docker images to minimize pull and extract times
+- Caching build artifacts such as NPM packages (egs: node_modules, yarn.lock, etc)
+- Caching Bazel build artifacts
+- Caching large GitHub repositories to minimize checkout times
 
 ## Usage
 
 ```yaml
-- name: Delete Cache
-  uses: useblacksmith/cache-delete@v1
-  with:
-    key: Linux-composer-ecf6e2e236589e4d34ba89662b6bc2afe8e15237cd19a13df9dc0cb599ff4826
-    version: v213asda2cf # Optional: specific version to delete
+jobs:
+  build:
+    runs-on: blacksmith
+    steps:
+      - name: Cache NPM packages
+        uses: useblacksmith/stickydisk-action@master
+        with:
+          key: ${{ github.repository }}-npm-cache
+          path: ~/.node_modules
 ```
 
-## Inputs
-
-| Input     | Description                             | Required | Default |
-| --------- | --------------------------------------- | -------- | ------- |
-| `key`     | The cache key to delete                 | No\*     | -       |
-| `version` | Specific version of the cache to delete | No       | -       |
-| `prefix`  | Treat key as a prefix for bulk deletion | No       | false   |
-
-\* Required unless `prefix` is true, in which case it can be empty to match all cache keys
-
-## Examples
-
-### Delete All Versions of a Cache
-
-```yaml
-- name: Delete All Cache Versions
-  uses: useblacksmith/cache-delete@v1
-  with:
-    key: npm-cache
-```
-
-### Delete a Specific Cache Version
-
-```yaml
-- name: Delete Specific Cache Version
-  uses: useblacksmith/cache-delete@v1
-  with:
-    key: npm-cache
-    version: v1.0
-```
-
-### Delete All Caches with a Prefix
-
-```yaml
-- name: Delete All npm Caches
-  uses: useblacksmith/cache-delete@v1
-  with:
-    key: npm-
-    prefix: true
-```
-
-### Delete All Caches
-
-```yaml
-- name: Delete All Caches
-  uses: useblacksmith/cache-delete@v1
-  with:
-    key: ""
-    prefix: true
-```
-
-## Error Handling
-
-The action will:
-
-- Fail if the cache deletion request fails (non-404 error)
-- Log a message if the cache is not found (404)
-- Successfully complete if the cache is deleted
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+Each sticky disk is uniquely identified by a key. The sticky disk will be mounted at the specified path. Once the job completes, the sticky disk will be unmounted and committed for future invocations. At the moment, customers can use up to 5 sticky disks in a single GitHub Action job.
