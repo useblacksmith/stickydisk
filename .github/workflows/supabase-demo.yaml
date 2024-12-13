@@ -1,0 +1,67 @@
+name: Start supabase with Sticky Disk
+on:
+  workflow_dispatch:
+  push:
+  pull_request:
+
+permissions:
+  packages: read
+  contents: read
+  id-token: write # This is required for requesting the JWT
+
+jobs:
+  github_supabase:
+    name: Run Supabase without Sticky Disk
+    runs-on: blacksmith-staging
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: useblacksmith/setup-node@v4
+        with:
+          node-version: 18
+      - name: Run Supabase
+        run: |
+          time npx -y supabase start
+          npx supabase db reset --debug
+          echo "Supabase is running at http://localhost:54323"
+          echo "API URL: http://localhost:54321"
+          echo "DB URL: postgresql://postgres:postgres@localhost:54322/postgres"
+
+  stickydisk_supabase:
+    name: Run Supabase with Sticky Disk
+    runs-on: blacksmith-staging
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: useblacksmith/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Setup sticky disk for ~/.npm
+        uses: useblacksmith/stickydisk@main
+        with:
+            key: "npm"
+            path: "~/.npm"
+
+      - name: Setup sticky disk for ./node_modules
+        uses: useblacksmith/stickydisk@main
+        with:
+            key: "node_modules"
+            path: "./node_modules"
+
+      - name: Setup sticky disk for /var/lib/docker
+        uses: useblacksmith/stickydisk@main
+        with:
+            key: "docker-data"
+            path: "/var/lib/docker"
+
+      - name: Run Supabase
+        run: |
+          time npx -y supabase start
+          npx supabase db reset --debug
+          echo "Supabase is running at http://localhost:54323"
+          echo "API URL: http://localhost:54321"
+          echo "DB URL: postgresql://postgres:postgres@localhost:54322/postgres"
