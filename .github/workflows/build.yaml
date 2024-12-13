@@ -17,6 +17,15 @@ jobs:
         with:
           node-version-file: .nvmrc
 
+      - name: Setup Buf
+        uses: bufbuild/buf-setup-action@v1
+
+      - name: Configure Buf Registry
+        run: |
+          npm config set @buf:registry https://buf.build/gen/npm/v1/
+          npm config set //buf.build/gen/npm/v1/:_authToken ${{ secrets.BUF_TOKEN }}
+          npm install @buf/blacksmith_vm-agent.connectrpc_es@latest
+
       - name: Install Dependencies
         run: npm ci
 
@@ -26,4 +35,9 @@ jobs:
       - name: Build Action
         run: |
           npm run build
-          git diff && git diff-index --quiet --exit-code HEAD
+          # Check if any files were changed during build
+          if ! git diff --quiet; then
+            echo "Error: Build generated changes that aren't committed. Please run 'npm run build' locally and commit the changes."
+            git diff
+            exit 1
+          fi

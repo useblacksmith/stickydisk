@@ -1,0 +1,73 @@
+name: Basic Sticky Disk Test
+on:
+  workflow_dispatch:
+  pull_request:
+
+jobs:
+  test-sticky-disk:
+    name: Test Sticky Disk
+    runs-on: blacksmith-staging
+    strategy:
+      matrix:
+        iteration: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+      fail-fast: false
+    steps:
+      - name: Mount First Sticky Disk
+        uses: useblacksmith/stickydisk@initial-commit
+        with:
+          key: foo
+          path: /shouldseethis
+
+      - name: List first directory if exists
+        run: |
+          if [ -d "/shouldseethis" ]; then
+            ls -la /shouldseethis
+          fi
+
+      - name: Write test file to first disk
+        run: sudo sh -c 'echo "Hello from first sticky disk" > /shouldseethis/test.txt'
+
+      - name: Mount Second Sticky Disk
+        uses: useblacksmith/stickydisk@initial-commit
+        with:
+          key: bar
+          path: /seconddisk
+
+      - name: List second directory if exists
+        run: |
+          if [ -d "/seconddisk" ]; then
+            ls -la /seconddisk
+          fi
+
+      - name: Write test file to second disk
+        run: sudo sh -c 'echo "Hello from second sticky disk" > /seconddisk/test.txt'
+
+      - name: Mount Third Sticky Disk
+        uses: useblacksmith/stickydisk@initial-commit
+        with:
+          key: baz
+          path: /thirddisk
+
+      - name: List third directory if exists
+        run: |
+          if [ -d "/thirddisk" ]; then
+            ls -la /thirddisk
+          fi
+
+      - name: Write test file to third disk
+        run: sudo sh -c 'echo "Hello from third sticky disk" > /thirddisk/test.txt'
+
+      - name: Mount First Sticky Disk Again
+        uses: useblacksmith/stickydisk@initial-commit
+        with:
+          key: foo
+          path: /shouldseethis_again
+
+      - name: List first directory again if exists
+        run: |
+          if [ -d "/shouldseethis_again" ]; then
+            ls -la /shouldseethis_again
+          fi
+
+      - name: Write test file to first disk again
+        run: sudo sh -c 'echo "Hello again from first sticky disk" > /shouldseethis_again/test2.txt'
