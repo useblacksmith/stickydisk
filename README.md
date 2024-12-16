@@ -4,10 +4,12 @@ A GitHub Action that helps persist state written to disk across jobs. Each stick
 
 Some common use cases of this action include:
 
-- Caching Docker images to minimize pull and extract times
 - Caching build artifacts such as NPM packages (egs: node_modules, yarn.lock, etc)
 - Caching Bazel build artifacts
-- Caching large GitHub repositories to minimize checkout times
+
+Coming soon:
+- Caching docker pull and extraction to minimize container startup times
+- Caching large repositories to make checking out code instantaneous
 
 ## Usage
 
