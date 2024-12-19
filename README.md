@@ -8,8 +8,6 @@
   </picture>
 </p>
 
-# Blacksmith Sticky Disk Action
-
 A GitHub Action that helps persist state written to disk across jobs. Each sticky disk is hot-loaded into the runner and mounted at the specified path.
 The sticky disk is formatted as an ext4 filesystem.
 
