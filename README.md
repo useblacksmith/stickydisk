@@ -11,53 +11,21 @@
 A GitHub Action that helps persist state written to disk across jobs. Each sticky disk is hot-loaded into the runner and mounted at the specified path.
 The sticky disk is formatted as an ext4 filesystem.
 
-## Usage
+# Architecture
 
-```yaml
-jobs:
-  build:
-    runs-on: blacksmith
-    steps:
-      - name: Cache NPM packages
-        uses: useblacksmith/stickydisk@v1
-        with:
-          key: ${{ github.repository }}-npm-cache
-          path: ~/.node_modules
-```
+<p align="center">
+  <picture>
+    <!-- Dark mode -->
+    <source media="(prefers-color-scheme: dark)" srcset="./arch-dark-mode.png" width="1000">
+    <!-- Light mode -->
+    <source media="(prefers-color-scheme: light)" srcset="./arch-light.png" width="1000">
+    <img alt="Blacksmith Logo" src="./arch-light.png" width="1000">
+  </picture>
+</p>
 
-Each sticky disk is uniquely identified by a key. The sticky disk will be mounted at the specified path. Once the job completes, the sticky disk will be unmounted and committed for future invocations. At the moment, customers can use up to 10 sticky disks in a single GitHub Action job.
+Blacksmith stores sticky disk artifacts in a secure, highly performant Ceph cluster. Our runners proxy their requests through our Storage Agents to interact with the Ceph cluster. Each sticky disk is uniquely identified by a key. When a GitHub Action job requests a sticky disk, the last committed snapshot will be cloned and mounted into the runner at the specified path. Once the job completes, the sticky disk will be unmounted and committed for future invocations. At the moment, customers can use up to 5 sticky disks in a single GitHub Action job.
 
 # Use Cases
-
-## Bazel Build Caching
-
-Bazel's remote cache can significantly improve build times, but uploading and downloading cached artifacts can still be a bottleneck. Using sticky disks with Blacksmith runners provides near-instant access to your Bazel caches as they are bind mounted into your runners on demand. Our [`useblacksmith/setup-bazel@v2`](https://github.com/useblacksmith/setup-bazel) action is a zero-confg way to use sticky disks to store the disk, repository, and external cache.
-
-```yaml
-jobs:
-  build:
-    runs-on: blacksmith
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Setup Bazel
-        uses: useblacksmith/setup-bazel@v2
-        with:
-          version: '6.x'
-      
-      - name: Build
-        run: |
-          bazel build //...
-```
-
-### Cache Performance Comparison
-
-| Caching Solution | Cache Size | Average Download Speed | Time to Access |
-|-----------------|------------|----------------|----------------|
-| GitHub Actions Cache | 6GB | 70 Mbps | ~11.5 minutes |
-| Blacksmith Cache | 6GB | 400 Mbps | ~2 minutes |
-| Sticky Disks | 6GB | N/A | 3 seconds |
-
 
 ## NPM Package Caching
 
@@ -94,14 +62,32 @@ jobs:
         run: npm run build
 ```
 
-# Architecture
+## Bazel Build Caching
 
-<p align="center">
-  <picture>
-    <!-- Dark mode -->
-    <source media="(prefers-color-scheme: dark)" srcset="./arch-dark-mode.png" width="300">
-    <!-- Light mode -->
-    <source media="(prefers-color-scheme: light)" srcset="./arch-light.png" width="300">
-    <img alt="Blacksmith Logo" src="./arch-light.png" width="300">
-  </picture>
-</p>
+Bazel's remote cache can significantly improve build times, but uploading and downloading cached artifacts can still be a bottleneck. Using sticky disks with Blacksmith runners provides near-instant access to your Bazel caches as they are bind mounted into your runners on demand. Our [`useblacksmith/setup-bazel@v2`](https://github.com/useblacksmith/setup-bazel) action is a zero-confg way to use sticky disks to store the disk, repository, and external cache.
+
+```yaml
+jobs:
+  build:
+    runs-on: blacksmith
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Bazel
+        uses: useblacksmith/setup-bazel@v2
+        with:
+          version: '6.x'
+      
+      - name: Build
+        run: |
+          bazel build //...
+```
+
+### Cache Performance Comparison
+
+| Caching Solution | Cache Size | Average Download Speed | Time to Access |
+|-----------------|------------|----------------|----------------|
+| GitHub Actions Cache | 6GB | 90 MB/s | ~1m6s |
+| Blacksmith Cache | 6GB | 400 MB/s | ~15s |
+| Sticky Disks | 6GB | N/A | 3 seconds |
+
