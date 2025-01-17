@@ -8,7 +8,7 @@
   </picture>
 </p>
 
-A GitHub Action that helps persist state written to disk across jobs. This action can serve as a superior alternative to the Actions cache, especially when the cache artifacts are extremely large. Each sticky disk is hot-loaded into the runner and mounted at the specified path.
+A GitHub Action that helps persist state written to disk across jobs. This action can serve as a superior alternative to the [Actions cache](https://github.com/useblacksmith/cache), especially when the cache artifacts are extremely large. Each sticky disk is hot-loaded into the runner and mounted at the specified path.
 The sticky disk is formatted as an ext4 filesystem.
 
 # Architecture
