@@ -36125,6 +36125,54 @@ const CommitStickyDiskResponse = /*@__PURE__*/ proto3.makeMessageType(
 );
 
 /**
+ * @generated from message stickydisk.v1.Metric
+ */
+const Metric = /*@__PURE__*/ proto3.makeMessageType(
+  "stickydisk.v1.Metric",
+  () => [
+    { no: 1, name: "int_value", kind: "scalar", T: 3 /* ScalarType.INT64 */, oneof: "value" },
+    { no: 2, name: "double_value", kind: "scalar", T: 1 /* ScalarType.DOUBLE */, oneof: "value" },
+    { no: 3, name: "type", kind: "enum", T: proto3.getEnumType(Metric_MetricType) },
+  ],
+);
+
+/**
+ * @generated from enum stickydisk.v1.Metric.MetricType
+ */
+const Metric_MetricType = /*@__PURE__*/ proto3.makeEnum(
+  "stickydisk.v1.Metric.MetricType",
+  [
+    {no: 0, name: "METRIC_TYPE_UNSPECIFIED"},
+    {no: 1, name: "BPA_HOTLOAD_DURATION_MS"},
+    {no: 2, name: "BPA_BUILDKITD_READY_DURATION_MS"},
+    {no: 3, name: "BPA_BUILDKITD_SHUTDOWN_DURATION_MS"},
+    {no: 4, name: "BPA_FEATURE_USAGE"},
+    {no: 5, name: "BAZEL_HOTLOAD_DURATION_MS"},
+    {no: 6, name: "BAZEL_FEATURE_USAGE"},
+  ],
+);
+
+/**
+ * @generated from message stickydisk.v1.ReportMetricRequest
+ */
+const ReportMetricRequest = /*@__PURE__*/ proto3.makeMessageType(
+  "stickydisk.v1.ReportMetricRequest",
+  () => [
+    { no: 1, name: "repo_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "region", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "metric", kind: "message", T: Metric },
+  ],
+);
+
+/**
+ * @generated from message stickydisk.v1.ReportMetricResponse
+ */
+const ReportMetricResponse = /*@__PURE__*/ proto3.makeMessageType(
+  "stickydisk.v1.ReportMetricResponse",
+  [],
+);
+
+/**
  * @generated from message stickydisk.v1.UpRequest
  */
 const UpRequest = /*@__PURE__*/ proto3.makeMessageType(
@@ -36181,6 +36229,15 @@ const StickyDiskService = {
       name: "Up",
       I: UpRequest,
       O: UpResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * @generated from rpc stickydisk.v1.StickyDiskService.ReportMetric
+     */
+    reportMetric: {
+      name: "ReportMetric",
+      I: ReportMetricRequest,
+      O: ReportMetricResponse,
       kind: MethodKind.Unary,
     },
   }
