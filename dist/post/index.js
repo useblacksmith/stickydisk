@@ -36333,7 +36333,9 @@ async function run() {
             core.debug(`${stickyDiskPath} is not mounted, skipping unmount`);
             return;
         }
-        // First try to unmount with retries
+        // Ensure all pending writes are flushed to disk before unmounting.
+        await execAsync('sync');
+        // Unmount with retries.
         for (let attempt = 1; attempt <= 10; attempt++) {
             try {
                 await execAsync(`sudo umount ${stickyDiskPath}`);
