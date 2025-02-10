@@ -6,6 +6,11 @@ import { createStickyDiskClient } from './utils';
 
 const execAsync = promisify(exec);
 
+// stickyDiskTimeoutMs states the max amount of time this action will wait for the VM agent to
+// expose the sticky disk from the storage agent, map it onto the host and then patch the drive
+// into the VM.
+const stickyDiskTimeoutMs = 45000;
+
 async function getStickyDisk(stickyDiskKey: string, options?: {signal?: AbortSignal}): Promise<{expose_id: string; device: string}> {
   const client = createStickyDiskClient();
   
@@ -64,14 +69,14 @@ async function maybeFormatBlockDevice(device: string): Promise<string> {
     return device;
   } catch (error) {
     if (error instanceof Error) {
-      core.error(`Failed to format device ${device}: ${error}`);
+      core.warning(`Failed to format device ${device}: ${error}`);
     }
     throw error;
   }
 }
 
 async function mountStickyDisk(stickyDiskKey: string, stickyDiskPath: string, signal: AbortSignal, controller: AbortController): Promise<{device: string, exposeId: string}> {
-  const timeoutId = setTimeout(() => controller.abort(), 15000);
+  const timeoutId = setTimeout(() => controller.abort(), stickyDiskTimeoutMs);
   const stickyDiskResponse = await getStickyDisk(stickyDiskKey, {signal});
   const device = stickyDiskResponse.device;
   const exposeId = stickyDiskResponse.expose_id;
@@ -126,7 +131,7 @@ async function run(): Promise<void> {
   }
 
   if (stickyDiskError) {
-    core.setFailed(`Error getting sticky disk: ${stickyDiskError}`);
+    core.warning(`Error getting sticky disk: ${stickyDiskError}`);
   }
 }
 
