@@ -106,7 +106,7 @@ async function run(): Promise<void> {
     }
   } catch (error) {
     if (error instanceof Error) {
-      core.error(`Failed to cleanup and commit sticky disk at ${stickyDiskPath}: ${error}`);
+      core.warning(`Failed to cleanup and commit sticky disk at ${stickyDiskPath}: ${error}`);
     }
   }
 }
