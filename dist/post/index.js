@@ -36125,54 +36125,6 @@ const CommitStickyDiskResponse = /*@__PURE__*/ proto3.makeMessageType(
 );
 
 /**
- * @generated from message stickydisk.v1.Metric
- */
-const Metric = /*@__PURE__*/ proto3.makeMessageType(
-  "stickydisk.v1.Metric",
-  () => [
-    { no: 1, name: "int_value", kind: "scalar", T: 3 /* ScalarType.INT64 */, oneof: "value" },
-    { no: 2, name: "double_value", kind: "scalar", T: 1 /* ScalarType.DOUBLE */, oneof: "value" },
-    { no: 3, name: "type", kind: "enum", T: proto3.getEnumType(Metric_MetricType) },
-  ],
-);
-
-/**
- * @generated from enum stickydisk.v1.Metric.MetricType
- */
-const Metric_MetricType = /*@__PURE__*/ proto3.makeEnum(
-  "stickydisk.v1.Metric.MetricType",
-  [
-    {no: 0, name: "METRIC_TYPE_UNSPECIFIED"},
-    {no: 1, name: "BPA_HOTLOAD_DURATION_MS"},
-    {no: 2, name: "BPA_BUILDKITD_READY_DURATION_MS"},
-    {no: 3, name: "BPA_BUILDKITD_SHUTDOWN_DURATION_MS"},
-    {no: 4, name: "BPA_FEATURE_USAGE"},
-    {no: 5, name: "BAZEL_HOTLOAD_DURATION_MS"},
-    {no: 6, name: "BAZEL_FEATURE_USAGE"},
-  ],
-);
-
-/**
- * @generated from message stickydisk.v1.ReportMetricRequest
- */
-const ReportMetricRequest = /*@__PURE__*/ proto3.makeMessageType(
-  "stickydisk.v1.ReportMetricRequest",
-  () => [
-    { no: 1, name: "repo_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 2, name: "region", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 3, name: "metric", kind: "message", T: Metric },
-  ],
-);
-
-/**
- * @generated from message stickydisk.v1.ReportMetricResponse
- */
-const ReportMetricResponse = /*@__PURE__*/ proto3.makeMessageType(
-  "stickydisk.v1.ReportMetricResponse",
-  [],
-);
-
-/**
  * @generated from message stickydisk.v1.UpRequest
  */
 const UpRequest = /*@__PURE__*/ proto3.makeMessageType(
@@ -36231,15 +36183,6 @@ const StickyDiskService = {
       O: UpResponse,
       kind: MethodKind.Unary,
     },
-    /**
-     * @generated from rpc stickydisk.v1.StickyDiskService.ReportMetric
-     */
-    reportMetric: {
-      name: "ReportMetric",
-      I: ReportMetricRequest,
-      O: ReportMetricResponse,
-      kind: MethodKind.Unary,
-    },
   }
 };
 
@@ -36266,7 +36209,7 @@ const execAsync = (0,external_util_.promisify)(external_child_process_.exec);
 async function commitStickydisk(exposeId, stickyDiskKey) {
     core.info(`Committing sticky disk ${stickyDiskKey} with expose ID ${exposeId}`);
     if (!exposeId || !stickyDiskKey) {
-        core.warning('No expose ID or sticky disk key found, cannot report sticky disk to Blacksmith');
+        core.warning("No expose ID or sticky disk key found, cannot report sticky disk to Blacksmith");
         return;
     }
     try {
@@ -36274,12 +36217,12 @@ async function commitStickydisk(exposeId, stickyDiskKey) {
         await client.commitStickyDisk({
             exposeId,
             stickyDiskKey,
-            vmId: process.env.VM_ID || '',
+            vmId: process.env.VM_ID || "",
             shouldCommit: true,
-            repoName: process.env.GITHUB_REPO_NAME || '',
-            stickyDiskToken: process.env.BLACKSMITH_STICKYDISK_TOKEN || ''
+            repoName: process.env.GITHUB_REPO_NAME || "",
+            stickyDiskToken: process.env.BLACKSMITH_STICKYDISK_TOKEN || "",
         }, {
-            timeoutMs: 30000
+            timeoutMs: 30000,
         });
         core.info(`Successfully committed sticky disk ${stickyDiskKey} with expose ID ${exposeId}`);
     }
@@ -36290,7 +36233,7 @@ async function commitStickydisk(exposeId, stickyDiskKey) {
 async function cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey) {
     core.info(`Cleaning up sticky disk ${stickyDiskKey} with expose ID ${exposeId}`);
     if (!exposeId || !stickyDiskKey) {
-        core.warning('No expose ID or sticky disk key found, cannot report sticky disk to Blacksmith');
+        core.warning("No expose ID or sticky disk key found, cannot report sticky disk to Blacksmith");
         return;
     }
     try {
@@ -36298,12 +36241,12 @@ async function cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey) {
         await client.commitStickyDisk({
             exposeId,
             stickyDiskKey,
-            vmId: process.env.VM_ID || '',
+            vmId: process.env.VM_ID || "",
             shouldCommit: false,
-            repoName: process.env.GITHUB_REPO_NAME || '',
-            stickyDiskToken: process.env.BLACKSMITH_STICKYDISK_TOKEN || ''
+            repoName: process.env.GITHUB_REPO_NAME || "",
+            stickyDiskToken: process.env.BLACKSMITH_STICKYDISK_TOKEN || "",
         }, {
-            timeoutMs: 30000
+            timeoutMs: 30000,
         });
     }
     catch (error) {
@@ -36312,11 +36255,11 @@ async function cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey) {
     }
 }
 async function run() {
-    const stickyDiskPath = (0,core.getState)('STICKYDISK_PATH');
-    const exposeId = (0,core.getState)('STICKYDISK_EXPOSE_ID');
-    const stickyDiskKey = (0,core.getState)('STICKYDISK_KEY');
+    const stickyDiskPath = (0,core.getState)("STICKYDISK_PATH");
+    const exposeId = (0,core.getState)("STICKYDISK_EXPOSE_ID");
+    const stickyDiskKey = (0,core.getState)("STICKYDISK_KEY");
     if (!stickyDiskPath) {
-        core.debug('No STICKYDISK_PATH in state, skipping unmount');
+        core.debug("No STICKYDISK_PATH in state, skipping unmount");
         return;
     }
     try {
@@ -36334,7 +36277,10 @@ async function run() {
             return;
         }
         // Ensure all pending writes are flushed to disk before unmounting.
-        await execAsync('sync');
+        await execAsync("sync");
+        // Drop page cache, dentries and inodes to ensure clean unmount
+        // This helps prevent "device is busy" errors during unmount
+        await execAsync("sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'");
         // Unmount with retries.
         for (let attempt = 1; attempt <= 10; attempt++) {
             try {
@@ -36347,10 +36293,10 @@ async function run() {
                     throw error;
                 }
                 core.warning(`Unmount failed, retrying (${attempt}/10)...`);
-                await new Promise(resolve => setTimeout(resolve, 300));
+                await new Promise((resolve) => setTimeout(resolve, 300));
             }
         }
-        const stickyDiskError = (0,core.getState)('STICKYDISK_ERROR') === 'true';
+        const stickyDiskError = (0,core.getState)("STICKYDISK_ERROR") === "true";
         if (!stickyDiskError) {
             await commitStickydisk(exposeId, stickyDiskKey);
         }
