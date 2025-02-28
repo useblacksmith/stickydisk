@@ -16,7 +16,7 @@ jobs:
         run: sudo mkdir -p ./shouldseethis
 
       - name: Mount First Sticky Disk
-        uses: useblacksmith/stickydisk@02-27-src_explicitly_flush_journal_before_umounting
+        uses: useblacksmith/stickydisk@main
         with:
           key: foo
           path: ./shouldseethis
@@ -31,7 +31,7 @@ jobs:
         run: sudo sh -c 'echo "Hello from first sticky disk" > ./shouldseethis/test.txt'
 
       - name: Mount Second Sticky Disk
-        uses: useblacksmith/stickydisk@02-27-src_explicitly_flush_journal_before_umounting
+        uses: useblacksmith/stickydisk@main
         with:
           key: bar
           path: ./seconddisk
@@ -46,7 +46,7 @@ jobs:
         run: sudo sh -c 'echo "Hello from second sticky disk" > ./seconddisk/test.txt'
 
       - name: Mount Third Sticky Disk
-        uses: useblacksmith/stickydisk@02-27-src_explicitly_flush_journal_before_umounting
+        uses: useblacksmith/stickydisk@main
         with:
           key: baz
           path: ./thirddisk
@@ -61,7 +61,7 @@ jobs:
         run: sudo sh -c 'echo "Hello from third sticky disk" > ./thirddisk/test.txt'
 
       - name: Mount First Sticky Disk Again
-        uses: useblacksmith/stickydisk@02-27-src_explicitly_flush_journal_before_umounting
+        uses: useblacksmith/stickydisk@main
         with:
           key: foo
           path: ./shouldseethis_again
