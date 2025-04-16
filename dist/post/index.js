@@ -36292,8 +36292,8 @@ const StickyDiskService = {
 
 function createStickyDiskClient() {
     const transport = createGrpcTransport({
-        baseUrl: 'http://192.168.127.1:5557',
-        httpVersion: '2',
+        baseUrl: `http://192.168.127.1:${process.env.BLACKSMITH_STICKY_DISK_GRPC_PORT || "5557"}`,
+        httpVersion: "2",
     });
     return createClient(StickyDiskService, transport);
 }
