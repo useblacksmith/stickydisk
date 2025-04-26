@@ -7,13 +7,13 @@ on:
 jobs:
   build-action:
     name: Build Action
-    runs-on: ubuntu-22.04
+    runs-on: blacksmith-4vcpu-ubuntu-2204
     steps:
       - name: Checkout Project
         uses: actions/checkout@v4.2.2
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4.1.0
+        uses: useblacksmith/setup-node@v5
         with:
           node-version-file: .nvmrc
 
