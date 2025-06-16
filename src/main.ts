@@ -19,10 +19,10 @@ async function getStickyDisk(stickyDiskKey: string, options?: {signal?: AbortSig
     stickyDiskKey: stickyDiskKey,
     region: process.env.BLACKSMITH_REGION || 'eu-central',
     installationModelId: process.env.BLACKSMITH_INSTALLATION_MODEL_ID || '',
-    vmId: process.env.VM_ID || '',
+    vmId: process.env.BLACKSMITH_VM_ID || '',
     stickyDiskType: 'stickydisk',
     stickyDiskToken: process.env.BLACKSMITH_STICKYDISK_TOKEN,
-    repoName: process.env.GITHUB_REPO_NAME || ''
+    repoName: process.env.BLACKSMITH_REPOSITORY || ''
   }, {
     signal: options?.signal,
   });
