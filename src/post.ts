@@ -28,7 +28,7 @@ async function commitStickydisk(
         stickyDiskKey,
         vmId: process.env.BLACKSMITH_VM_ID || "",
         shouldCommit: true,
-        repoName: process.env.BLACKSMITH_REPOSITORY || "",
+        repoName: process.env.GITHUB_REPO_NAME || "",
         stickyDiskToken: process.env.BLACKSMITH_STICKYDISK_TOKEN || "",
       },
       {
@@ -67,7 +67,7 @@ async function cleanupStickyDiskWithoutCommit(
         stickyDiskKey,
         vmId: process.env.BLACKSMITH_VM_ID || "",
         shouldCommit: false,
-        repoName: process.env.BLACKSMITH_REPOSITORY || "",
+        repoName: process.env.GITHUB_REPO_NAME || "",
         stickyDiskToken: process.env.BLACKSMITH_STICKYDISK_TOKEN || "",
       },
       {
