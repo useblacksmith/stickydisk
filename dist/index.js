@@ -36321,7 +36321,7 @@ async function getStickyDisk(stickyDiskKey, options) {
         vmId: process.env.BLACKSMITH_VM_ID || '',
         stickyDiskType: 'stickydisk',
         stickyDiskToken: process.env.BLACKSMITH_STICKYDISK_TOKEN,
-        repoName: process.env.BLACKSMITH_REPOSITORY || ''
+        repoName: process.env.GITHUB_REPO_NAME || ''
     }, {
         signal: options === null || options === void 0 ? void 0 : options.signal,
     });
