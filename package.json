@@ -13,7 +13,7 @@
     "@buf/blacksmith_vm-agent.connectrpc_es": "^1.6.1-20250304023716-e8d233d92eac.2",
     "@bufbuild/connect": "^0.13.0",
     "@bufbuild/connect-web": "^0.13.0",
-    "@bufbuild/protobuf": "^1.4.2",
+    "@bufbuild/protobuf": "^1.10.1",
     "@connectrpc/connect": "^1.6.1",
     "@connectrpc/connect-node": "^1.6.1",
     "node-fetch": "^2.7.0",
