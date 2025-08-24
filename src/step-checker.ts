@@ -5,12 +5,12 @@ import * as core from "@actions/core";
 interface StepFailureCheck {
   hasFailures: boolean;
   failedCount: number;
-  failedSteps?: Array<{
+  failedSteps?: {
     action?: string;
     stepName?: string;
     result: string;
     errorMessages?: string[];
-  }>;
+  }[];
   error?: string;
 }
 
