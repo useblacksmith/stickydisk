@@ -4,15 +4,22 @@ This document contains important information for Claude when working on this cod
 
 ## Pre-commit Checks
 
-**IMPORTANT**: Before committing any changes, always run these commands to ensure code quality:
+**CRITICAL - MUST RUN BEFORE EVERY COMMIT**: The CI will fail if you don't run these commands before committing:
 
 ```bash
-# Run the linter
+# 1. Run the linter (REQUIRED - CI will fail if there are lint errors)
 npm run lint
 
-# Build the project
+# 2. Build the project (REQUIRED - CI will fail if dist/ files are out of date)
 npm run build
+
+# 3. Stage the dist files if they changed
+git add dist/
 ```
+
+**Why this matters**: The CI checks that:
+1. Code passes all lint rules
+2. The dist/ folder is up-to-date with the source code (no uncommitted build changes)
 
 ## Available Scripts
 
