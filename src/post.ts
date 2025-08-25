@@ -3,6 +3,7 @@ import { promisify } from "util";
 import { exec } from "child_process";
 import { getState } from "@actions/core";
 import { createStickyDiskClient } from "./utils";
+import { checkPreviousStepFailures } from "./step-checker";
 
 const execAsync = promisify(exec);
 
@@ -130,9 +131,32 @@ async function run(): Promise<void> {
     }
 
     const stickyDiskError = getState("STICKYDISK_ERROR") === "true";
+    
+    // Check for previous step failures before committing
     if (!stickyDiskError) {
-      await commitStickydisk(exposeId, stickyDiskKey);
+      core.info("Checking for previous step failures before committing sticky disk");
+      const failureCheck = await checkPreviousStepFailures();
+      
+      if (failureCheck.error) {
+        core.warning(`Unable to check for previous step failures: ${failureCheck.error}`);
+        core.warning("Skipping sticky disk commit due to ambiguity in failure detection");
+        await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey);
+      } else if (failureCheck.hasFailures) {
+        core.warning(`Found ${failureCheck.failedCount} failed/cancelled steps in previous workflow steps`);
+        if (failureCheck.failedSteps) {
+          failureCheck.failedSteps.forEach((step) => {
+            core.warning(`  - Step: ${step.stepName || step.action || "unknown"} (${step.result})`);
+          });
+        }
+        core.warning("Skipping sticky disk commit due to previous step failures");
+        await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey);
+      } else {
+        // No failures detected
+        core.info("No previous step failures detected, committing sticky disk");
+        await commitStickydisk(exposeId, stickyDiskKey);
+      }
     } else {
+      core.warning("Skipping sticky disk commit due to sticky disk error during setup");
       await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey);
     }
   } catch (error) {
