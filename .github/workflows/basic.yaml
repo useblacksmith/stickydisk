@@ -12,23 +12,14 @@ jobs:
         iteration: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
       fail-fast: false
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
       - name: Create directory called
         run: sudo mkdir -p ./shouldseethis
 
       - name: Mount First Sticky Disk
-        uses: ./
+        uses: useblacksmith/stickydisk@main
         with:
           key: foo
           path: ./shouldseethis
-
-      - name: Intentional Failure Step
-        if: matrix.iteration == 3
-        run: |
-          echo "This step will fail intentionally for iteration 3 to test failure detection"
-          exit 1
 
       - name: List first directory if exists
         run: |
@@ -40,7 +31,7 @@ jobs:
         run: sudo sh -c 'echo "Hello from first sticky disk" > ./shouldseethis/test.txt'
 
       - name: Mount Second Sticky Disk
-        uses: ./
+        uses: useblacksmith/stickydisk@main
         with:
           key: bar
           path: ./seconddisk
@@ -55,7 +46,7 @@ jobs:
         run: sudo sh -c 'echo "Hello from second sticky disk" > ./seconddisk/test.txt'
 
       - name: Mount Third Sticky Disk
-        uses: ./
+        uses: useblacksmith/stickydisk@main
         with:
           key: baz
           path: ./thirddisk
@@ -70,7 +61,7 @@ jobs:
         run: sudo sh -c 'echo "Hello from third sticky disk" > ./thirddisk/test.txt'
 
       - name: Mount First Sticky Disk Again
-        uses: ./
+        uses: useblacksmith/stickydisk@main
         with:
           key: foo
           path: ./shouldseethis_again
