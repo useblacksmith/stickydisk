@@ -36558,7 +36558,7 @@ async function run() {
             }
             else {
                 fsDiskUsageBytes = parsedValue;
-                core.info(`Filesystem usage: ${fsDiskUsageBytes} bytes (${(fsDiskUsageBytes / (1 << 30)).toFixed(2)} GB)`);
+                core.info(`Filesystem usage: ${fsDiskUsageBytes} bytes (${(fsDiskUsageBytes / (1 << 30)).toFixed(2)} GiB)`);
             }
         }
         catch (error) {
