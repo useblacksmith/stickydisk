@@ -10,14 +10,14 @@ const execAsync = promisify(exec);
 async function commitStickydisk(
   exposeId: string,
   stickyDiskKey: string,
-  fsDiskUsageBytes: number | null
+  fsDiskUsageBytes: number | null,
 ): Promise<void> {
   core.info(
-    `Committing sticky disk ${stickyDiskKey} with expose ID ${exposeId}`
+    `Committing sticky disk ${stickyDiskKey} with expose ID ${exposeId}`,
   );
   if (!exposeId || !stickyDiskKey) {
     core.warning(
-      "No expose ID or sticky disk key found, cannot report sticky disk to Blacksmith"
+      "No expose ID or sticky disk key found, cannot report sticky disk to Blacksmith",
     );
     return;
   }
@@ -41,7 +41,7 @@ async function commitStickydisk(
       core.debug(`Reporting fs usage: ${fsDiskUsageBytes} bytes`);
     } else {
       core.debug(
-        "No fs usage data available, storage agent will use fallback sizing"
+        "No fs usage data available, storage agent will use fallback sizing",
       );
     }
 
@@ -49,25 +49,25 @@ async function commitStickydisk(
       timeoutMs: 30000,
     });
     core.info(
-      `Successfully committed sticky disk ${stickyDiskKey} with expose ID ${exposeId}`
+      `Successfully committed sticky disk ${stickyDiskKey} with expose ID ${exposeId}`,
     );
   } catch (error) {
     core.warning(
-      `Error committing sticky disk: ${error instanceof Error ? error.message : String(error)}`
+      `Error committing sticky disk: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
 }
 
 async function cleanupStickyDiskWithoutCommit(
   exposeId: string,
-  stickyDiskKey: string
+  stickyDiskKey: string,
 ): Promise<void> {
   core.info(
-    `Cleaning up sticky disk ${stickyDiskKey} with expose ID ${exposeId}`
+    `Cleaning up sticky disk ${stickyDiskKey} with expose ID ${exposeId}`,
   );
   if (!exposeId || !stickyDiskKey) {
     core.warning(
-      "No expose ID or sticky disk key found, cannot report sticky disk to Blacksmith"
+      "No expose ID or sticky disk key found, cannot report sticky disk to Blacksmith",
     );
     return;
   }
@@ -86,11 +86,11 @@ async function cleanupStickyDiskWithoutCommit(
       },
       {
         timeoutMs: 30000,
-      }
+      },
     );
   } catch (error) {
     core.warning(
-      `Error reporting build failed: ${error instanceof Error ? error.message : String(error)}`
+      `Error reporting build failed: ${error instanceof Error ? error.message : String(error)}`,
     );
     // We don't want to fail the build if this fails so we swallow the error.
   }
@@ -110,7 +110,7 @@ async function run(): Promise<void> {
     // Check if path is mounted.
     try {
       const { stdout: mountOutput } = await execAsync(
-        `mount | grep "${stickyDiskPath}"`
+        `mount | grep "${stickyDiskPath}"`,
       );
       if (!mountOutput) {
         core.debug(`${stickyDiskPath} is not mounted, skipping unmount`);
@@ -129,24 +129,24 @@ async function run(): Promise<void> {
     let fsDiskUsageBytes: number | null = null;
     try {
       const { stdout } = await execAsync(
-        `df -B1 --output=used "${stickyDiskPath}" | tail -n1`
+        `df -B1 --output=used "${stickyDiskPath}" | tail -n1`,
       );
       const parsedValue = parseInt(stdout.trim(), 10);
 
       if (isNaN(parsedValue) || parsedValue <= 0) {
         core.warning(
-          `Invalid filesystem usage value from df: "${stdout.trim()}". Will not report fs usage.`
+          `Invalid filesystem usage value from df: "${stdout.trim()}". Will not report fs usage.`,
         );
       } else {
         fsDiskUsageBytes = parsedValue;
         core.info(
-          `Filesystem usage: ${fsDiskUsageBytes} bytes (${(fsDiskUsageBytes / (1 << 30)).toFixed(2)} GB)`
+          `Filesystem usage: ${fsDiskUsageBytes} bytes (${(fsDiskUsageBytes / (1 << 30)).toFixed(2)} GB)`,
         );
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       core.warning(
-        `Failed to get filesystem usage: ${errorMsg}. Will not report fs usage.`
+        `Failed to get filesystem usage: ${errorMsg}. Will not report fs usage.`,
       );
     }
 
@@ -174,31 +174,31 @@ async function run(): Promise<void> {
     // Check for previous step failures before committing
     if (!stickyDiskError) {
       core.info(
-        "Checking for previous step failures before committing sticky disk"
+        "Checking for previous step failures before committing sticky disk",
       );
       const failureCheck = await checkPreviousStepFailures();
 
       if (failureCheck.error) {
         core.warning(
-          `Unable to check for previous step failures: ${failureCheck.error}`
+          `Unable to check for previous step failures: ${failureCheck.error}`,
         );
         core.warning(
-          "Skipping sticky disk commit due to ambiguity in failure detection"
+          "Skipping sticky disk commit due to ambiguity in failure detection",
         );
         await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey);
       } else if (failureCheck.hasFailures) {
         core.warning(
-          `Found ${failureCheck.failedCount} failed/cancelled steps in previous workflow steps`
+          `Found ${failureCheck.failedCount} failed/cancelled steps in previous workflow steps`,
         );
         if (failureCheck.failedSteps) {
           failureCheck.failedSteps.forEach((step) => {
             core.warning(
-              `  - Step: ${step.stepName || step.action || "unknown"} (${step.result})`
+              `  - Step: ${step.stepName || step.action || "unknown"} (${step.result})`,
             );
           });
         }
         core.warning(
-          "Skipping sticky disk commit due to previous step failures"
+          "Skipping sticky disk commit due to previous step failures",
         );
         await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey);
       } else {
@@ -208,14 +208,14 @@ async function run(): Promise<void> {
       }
     } else {
       core.warning(
-        "Skipping sticky disk commit due to sticky disk error during setup"
+        "Skipping sticky disk commit due to sticky disk error during setup",
       );
       await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey);
     }
   } catch (error) {
     if (error instanceof Error) {
       core.warning(
-        `Failed to cleanup and commit sticky disk at ${stickyDiskPath}: ${error}`
+        `Failed to cleanup and commit sticky disk at ${stickyDiskPath}: ${error}`,
       );
     }
   }
