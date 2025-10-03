@@ -36535,7 +36535,7 @@ async function run() {
     try {
         // Check if path is mounted.
         try {
-            const { stdout: mountOutput } = await execAsync(`mount | grep ${stickyDiskPath}`);
+            const { stdout: mountOutput } = await execAsync(`mount | grep "${stickyDiskPath}"`);
             if (!mountOutput) {
                 core.debug(`${stickyDiskPath} is not mounted, skipping unmount`);
                 return;
@@ -36546,15 +36546,32 @@ async function run() {
             core.debug(`${stickyDiskPath} is not mounted, skipping unmount`);
             return;
         }
-        // Ensure all pending writes are flushed to disk before unmounting.
+        // Ensure all pending writes are flushed to disk before collecting usage.
         await execAsync("sync");
+        // Get filesystem usage BEFORE unmounting (critical timing)
+        let fsDiskUsageBytes = null;
+        try {
+            const { stdout } = await execAsync(`df -B1 --output=used "${stickyDiskPath}" | tail -n1`);
+            const parsedValue = parseInt(stdout.trim(), 10);
+            if (isNaN(parsedValue) || parsedValue <= 0) {
+                core.warning(`Invalid filesystem usage value from df: "${stdout.trim()}". Will not report fs usage.`);
+            }
+            else {
+                fsDiskUsageBytes = parsedValue;
+                core.info(`Filesystem usage: ${fsDiskUsageBytes} bytes (${(fsDiskUsageBytes / (1 << 30)).toFixed(2)} GB)`);
+            }
+        }
+        catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            core.warning(`Failed to get filesystem usage: ${errorMsg}. Will not report fs usage.`);
+        }
         // Drop page cache, dentries and inodes to ensure clean unmount
         // This helps prevent "device is busy" errors during unmount
         await execAsync("sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'");
         // Unmount with retries.
         for (let attempt = 1; attempt <= 10; attempt++) {
             try {
-                await execAsync(`sudo umount ${stickyDiskPath}`);
+                await execAsync(`sudo umount "${stickyDiskPath}"`);
                 core.info(`Successfully unmounted ${stickyDiskPath}`);
                 break;
             }
@@ -36589,22 +36606,6 @@ async function run() {
             else {
                 // No failures detected
                 core.info("No previous step failures detected, committing sticky disk");
-                // Get filesystem usage of the mounted sticky disk path
-                let fsDiskUsageBytes = null;
-                try {
-                    const { stdout } = await execAsync(`df -B1 --output=used ${stickyDiskPath} | tail -n1`);
-                    const parsedValue = parseInt(stdout.trim(), 10);
-                    if (isNaN(parsedValue) || parsedValue <= 0) {
-                        core.warning(`Invalid filesystem usage value from df: "${stdout.trim()}". Will not report fs usage.`);
-                    }
-                    else {
-                        fsDiskUsageBytes = parsedValue;
-                        core.info(`Filesystem usage: ${fsDiskUsageBytes} bytes (${(fsDiskUsageBytes / (1 << 30)).toFixed(2)} GB)`);
-                    }
-                }
-                catch (error) {
-                    core.warning(`Failed to get filesystem usage: ${error.message}. Will not report fs usage.`);
-                }
                 await commitStickydisk(exposeId, stickyDiskKey, fsDiskUsageBytes);
             }
         }
