@@ -18,6 +18,7 @@ git add dist/
 ```
 
 **Why this matters**: The CI checks that:
+
 1. Code passes all lint rules
 2. The dist/ folder is up-to-date with the source code (no uncommitted build changes)
 

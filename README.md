@@ -40,24 +40,24 @@ jobs:
     runs-on: blacksmith
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: useblacksmith/setup-node@v5
         with:
-          node-version: '18.x'
-      
+          node-version: "18.x"
+
       - name: Mount NPM Cache
         uses: useblacksmith/stickydisk@v1
         with:
           key: ${{ github.repository }}-npm-cache
           path: ~/.npm
-      
+
       - name: Mount node_modules
         uses: useblacksmith/stickydisk@v1
         with:
           key: ${{ github.repository }}-node-modules
           path: ./node_modules
-      
+
       - name: Install Dependencies
         run: npm ci
 
@@ -75,12 +75,12 @@ jobs:
     runs-on: blacksmith
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Bazel
         uses: useblacksmith/setup-bazel@v2
         with:
-          version: '6.x'
-      
+          version: "6.x"
+
       - name: Build
         run: |
           bazel build //...
@@ -88,9 +88,8 @@ jobs:
 
 ### Cache Performance Comparison
 
-| Caching Solution | Cache Size | Average Download Speed | Time to Access |
-|-----------------|------------|----------------|----------------|
-| GitHub Actions Cache | 6GB | 90 MB/s | ~1m6s |
-| Blacksmith Cache | 6GB | 400 MB/s | ~15s |
-| Sticky Disks | 6GB | N/A | 3 seconds |
-
+| Caching Solution     | Cache Size | Average Download Speed | Time to Access |
+| -------------------- | ---------- | ---------------------- | -------------- |
+| GitHub Actions Cache | 6GB        | 90 MB/s                | ~1m6s          |
+| Blacksmith Cache     | 6GB        | 400 MB/s               | ~15s           |
+| Sticky Disks         | 6GB        | N/A                    | 3 seconds      |
