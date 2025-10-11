@@ -111,7 +111,7 @@ Delete a specific sticky disk using its key:
 
 ## Delete Docker Cache
 
-Delete Docker build cache for your repository:
+Delete Docker build cache for your repository. This should be used in conjunction with `useblacksmith/setup-docker-builder@v1`, which sets up the sticky disk for Docker build caching:
 
 ```yaml
 - name: Delete Docker cache
