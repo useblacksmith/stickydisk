@@ -93,3 +93,63 @@ jobs:
 | GitHub Actions Cache | 6GB        | 90 MB/s                | ~1m6s          |
 | Blacksmith Cache     | 6GB        | 400 MB/s               | ~15s           |
 | Sticky Disks         | 6GB        | N/A                    | 3 seconds      |
+
+# useblacksmith/stickydisk-delete
+
+[useblacksmith/stickydisk-delete](https://github.com/useblacksmith/stickydisk-delete) allows you to delete sticky disks programmatically. It supports two deletion methods:
+
+## Delete by Key
+
+Delete a specific sticky disk using its key:
+
+```yaml
+- name: Delete sticky disk
+  uses: useblacksmith/stickydisk-delete@v1
+  with:
+    delete-key: my-cache-disk
+```
+
+## Delete Docker Cache
+
+Delete Docker build cache for your repository. This should be used in conjunction with `useblacksmith/setup-docker-builder@v1`, which sets up the sticky disk for Docker build caching:
+
+```yaml
+- name: Delete Docker cache
+  uses: useblacksmith/stickydisk-delete@v1
+  with:
+    delete-docker-cache: true
+```
+
+## Example: Cleanup After Build
+
+```yaml
+name: Build with Cleanup
+on: push
+
+jobs:
+  build:
+    runs-on: blacksmith-4vcpu-ubuntu-2204
+    steps:
+      - name: Create sticky disk for dependencies
+        uses: useblacksmith/stickydisk@v1
+        with:
+          key: deps-cache
+          path: ~/.npm
+
+      - uses: actions/checkout@v4
+
+      - name: Install and build
+        run: |
+          npm ci
+          npm run build
+
+  cleanup:
+    runs-on: blacksmith-4vcpu-ubuntu-2204
+    needs: build
+    if: always()
+    steps:
+      - name: Delete sticky disk
+        uses: useblacksmith/stickydisk-delete@v1
+        with:
+          delete-key: deps-cache
+```

@@ -36110,6 +36110,8 @@ const GetStickyDiskResponse = /*@__PURE__*/ proto3.makeMessageType(
   () => [
     { no: 1, name: "expose_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 2, name: "disk_identifier", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "parent_snapshot_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 4, name: "clone_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
   ],
 );
 
