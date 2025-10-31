@@ -78,6 +78,29 @@ async function maybeFormatBlockDevice(device: string): Promise<string> {
       `sudo mkfs.ext4 -m0 -E root_owner=$(id -u):$(id -g) -Enodiscard,lazy_itable_init=1,lazy_journal_init=1 -F ${device}`,
     );
     core.debug(`Successfully formatted ${device} with ext4`);
+
+    // Remove lost+found directory to prevent permission issues.
+    // mkfs.ext4 always creates lost+found with root:root 0700 permissions for fsck recovery.
+    // This causes EACCES errors when tools (pnpm, yarn, npm, docker buildx) recursively scan
+    // directories mounted from sticky disks (e.g., ./node_modules, ./build-cache).
+    // For ephemeral CI cache filesystems, lost+found is unnecessary - corruption can be
+    // resolved by rebuilding the cache. Removing it prevents unpredictable build failures.
+    core.debug(`Removing lost+found directory from ${device}`);
+    const tempMount = `/tmp/stickydisk-init-${Date.now()}`;
+    try {
+      await execAsync(`sudo mkdir -p ${tempMount}`);
+      await execAsync(`sudo mount ${device} ${tempMount}`);
+      await execAsync(`sudo rm -rf ${tempMount}/lost+found`);
+      await execAsync(`sudo umount ${tempMount}`);
+      await execAsync(`sudo rmdir ${tempMount}`);
+      core.debug(`Removed lost+found directory from ${device}`);
+    } catch (error) {
+      core.warning(
+        `Failed to remove lost+found directory: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      // Non-fatal - continue even if cleanup fails
+    }
+
     return device;
   } catch (error) {
     if (error instanceof Error) {
