@@ -32,19 +32,19 @@ Blacksmith stores sticky disk artifacts in a secure, highly performant Ceph clus
 
 ## NPM Package Caching
 
-Node.js projects can have extensive dependency trees, leading to large `node_modules` directories. Sticky disks provide persistent, high-performance storage for your NPM packages.
+Node.js projects can have extensive dependency trees, leading to large `node_modules` directories. Sticky disks provide persistent, high-performance storage for both the npm cache and node_modules.
 
 ```yaml
 jobs:
   build:
-    runs-on: blacksmith
+    runs-on: blacksmith-4vcpu-ubuntu-2204
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: useblacksmith/setup-node@v5
+        uses: actions/setup-node@v4
         with:
-          node-version: "18.x"
+          node-version: "20.x"
 
       - name: Mount NPM Cache
         uses: useblacksmith/stickydisk@v1
@@ -72,7 +72,7 @@ Bazel's remote cache can significantly improve build times, but uploading and do
 ```yaml
 jobs:
   build:
-    runs-on: blacksmith
+    runs-on: blacksmith-4vcpu-ubuntu-2204
     steps:
       - uses: actions/checkout@v4
 
@@ -84,6 +84,168 @@ jobs:
       - name: Build
         run: |
           bazel build //...
+```
+
+## Go Build and Module Cache
+
+Go projects benefit from persistent build and module caches, especially for large codebases with many dependencies.
+
+```yaml
+jobs:
+  build:
+    runs-on: blacksmith-4vcpu-ubuntu-2204
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Mount Go Build Cache
+        uses: useblacksmith/stickydisk@v1
+        with:
+          key: ${{ github.repository }}-go-build-cache-${{ runner.os }}
+          path: ~/.cache/go-build
+
+      - name: Mount Go Module Cache
+        uses: useblacksmith/stickydisk@v1
+        with:
+          key: ${{ github.repository }}-go-mod-cache-${{ runner.os }}
+          path: ~/go/pkg/mod
+
+      - name: Build
+        run: go build ./...
+
+      - name: Test
+        run: go test ./...
+```
+
+## Turborepo Cache
+
+Monorepos using Turborepo benefit from persistent caching of build outputs across packages.
+
+```yaml
+jobs:
+  build:
+    runs-on: blacksmith-8vcpu-ubuntu-2204
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 8
+
+      - name: Mount Turborepo Cache
+        uses: useblacksmith/stickydisk@v1
+        with:
+          key: ${{ github.repository }}-turbo-${{ github.ref_name }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+          path: .turbo
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm turbo build
+```
+
+## Python Virtual Environments
+
+Poetry virtual environments can contain hundreds of packages. Sticky disks eliminate reinstallation time.
+
+```yaml
+jobs:
+  test:
+    runs-on: blacksmith-4vcpu-ubuntu-2204
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install Poetry
+        run: pipx install poetry
+
+      - name: Mount Poetry Virtual Environment
+        uses: useblacksmith/stickydisk@v1
+        with:
+          key: poetry-venv-${{ github.repository }}-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
+          path: .venv
+
+      - name: Install Dependencies
+        run: |
+          poetry config virtualenvs.in-project true
+          poetry install --no-interaction
+
+      - name: Run Tests
+        run: poetry run pytest
+```
+
+## Nix Package Cache
+
+Nix store builds are reproducible but slow. Persistent Nix stores on sticky disks provide instant access to built packages.
+
+```yaml
+jobs:
+  build:
+    runs-on: blacksmith-8vcpu-ubuntu-2204
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create Nix Directories
+        run: |
+          sudo mkdir -p /nix/store
+          sudo chmod -R 777 /nix
+
+      - name: Mount Nix Store
+        uses: useblacksmith/stickydisk@v1
+        with:
+          key: ${{ github.repository }}-nix-cache-${{ runner.os }}
+          path: /nix
+
+      - name: Install Nix
+        uses: nixbuild/nix-quick-install-action@v30
+
+      - name: Build
+        run: nix build
+
+      - name: Test
+        run: nix flake check
+```
+
+## Playwright Browser Binaries
+
+Playwright browser downloads are large (~1GB) and sticky disks make them instantly available for E2E testing.
+
+```yaml
+jobs:
+  e2e-tests:
+    runs-on: blacksmith-4vcpu-ubuntu-2204
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+
+      - name: Mount Playwright Browsers
+        uses: useblacksmith/stickydisk@v1
+        with:
+          key: playwright-browsers-${{ runner.os }}
+          path: ~/.cache/ms-playwright
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps
+
+      - name: Run E2E Tests
+        run: npx playwright test
 ```
 
 ### Cache Performance Comparison
