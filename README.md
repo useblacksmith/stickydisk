@@ -32,7 +32,7 @@ Blacksmith stores sticky disk artifacts in a secure, highly performant Ceph clus
 
 ## NPM Package Caching
 
-Node.js projects can have extensive dependency trees, leading to large `node_modules` directories. Sticky disks provide persistent, high-performance storage for your NPM cache.
+Node.js projects can have extensive dependency trees, leading to large `node_modules` directories. Sticky disks provide persistent, high-performance storage for both the npm cache and node_modules.
 
 ```yaml
 jobs:
@@ -52,6 +52,12 @@ jobs:
           key: ${{ github.repository }}-npm-cache
           path: ~/.npm
 
+      - name: Mount node_modules
+        uses: useblacksmith/stickydisk@v1
+        with:
+          key: ${{ github.repository }}-node-modules
+          path: ./node_modules
+
       - name: Install Dependencies
         run: npm ci
 
@@ -66,7 +72,7 @@ Bazel's remote cache can significantly improve build times, but uploading and do
 ```yaml
 jobs:
   build:
-    runs-on: blacksmith
+    runs-on: blacksmith-4vcpu-ubuntu-2204
     steps:
       - uses: actions/checkout@v4
 
