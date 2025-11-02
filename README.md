@@ -30,33 +30,31 @@ Blacksmith stores sticky disk artifacts in a secure, highly performant Ceph clus
 
 # Use Cases
 
-## NPM Package Caching
+Based on production usage across 58+ installations, sticky disks are commonly used for:
 
-Node.js projects can have extensive dependency trees, leading to large `node_modules` directories. Sticky disks provide persistent, high-performance storage for your NPM packages.
+## JavaScript Package Management
+
+### NPM/pnpm Cache
+
+Store the npm global cache for faster dependency resolution. The cache is accessed by content hash, providing instant lookups.
 
 ```yaml
 jobs:
   build:
-    runs-on: blacksmith
+    runs-on: blacksmith-4vcpu-ubuntu-2204
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Node.js
-        uses: useblacksmith/setup-node@v5
+        uses: actions/setup-node@v4
         with:
-          node-version: "18.x"
+          node-version: "20.x"
 
       - name: Mount NPM Cache
         uses: useblacksmith/stickydisk@v1
         with:
           key: ${{ github.repository }}-npm-cache
           path: ~/.npm
-
-      - name: Mount node_modules
-        uses: useblacksmith/stickydisk@v1
-        with:
-          key: ${{ github.repository }}-node-modules
-          path: ./node_modules
 
       - name: Install Dependencies
         run: npm ci
@@ -65,34 +63,181 @@ jobs:
         run: npm run build
 ```
 
-## Bazel Build Caching
+### Turborepo Remote Cache
 
-Bazel's remote cache can significantly improve build times, but uploading and downloading cached artifacts can still be a bottleneck. Using sticky disks with Blacksmith runners provides near-instant access to your Bazel caches as they are bind mounted into your runners on demand. Our [`useblacksmith/setup-bazel@v2`](https://github.com/useblacksmith/setup-bazel) action is a zero-confg way to use sticky disks to store the disk, repository, and external cache.
+Turborepo's local cache benefits from persistent storage, dramatically reducing build times for monorepos.
 
 ```yaml
 jobs:
   build:
-    runs-on: blacksmith
+    runs-on: blacksmith-8vcpu-ubuntu-2204
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Bazel
-        uses: useblacksmith/setup-bazel@v2
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
         with:
-          version: "6.x"
+          version: 8
+
+      - name: Mount Turborepo Cache
+        uses: useblacksmith/stickydisk@v1
+        with:
+          key: ${{ github.repository }}-turbo-${{ github.ref_name }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+          path: .turbo
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Build
-        run: |
-          bazel build //...
+        run: pnpm turbo build
 ```
 
-### Cache Performance Comparison
+## Go Build Cache
+
+Go's build cache can grow to hundreds of gigabytes for large projects. Sticky disks provide instant access without expensive downloads.
+
+```yaml
+jobs:
+  build:
+    runs-on: blacksmith-4vcpu-ubuntu-2204
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Mount Go Build Cache
+        uses: useblacksmith/stickydisk@v1
+        with:
+          key: ${{ github.repository }}-go-build-cache-${{ runner.os }}
+          path: ~/.cache/go-build
+
+      - name: Mount Go Module Cache
+        uses: useblacksmith/stickydisk@v1
+        with:
+          key: ${{ github.repository }}-go-mod-cache-${{ runner.os }}
+          path: ~/go/pkg/mod
+
+      - name: Build
+        run: go build ./...
+
+      - name: Test
+        run: go test ./...
+```
+
+## Python Virtual Environments
+
+Poetry and pip virtual environments can be large and slow to recreate. Sticky disks make them persistent across jobs.
+
+```yaml
+jobs:
+  test:
+    runs-on: blacksmith-4vcpu-ubuntu-2204
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install Poetry
+        run: pipx install poetry
+
+      - name: Mount Poetry Virtual Environment
+        uses: useblacksmith/stickydisk@v1
+        with:
+          key: poetry-venv-${{ github.repository }}-${{ runner.os }}-${{ hashFiles('**/poetry.lock') }}
+          path: .venv
+
+      - name: Install Dependencies
+        run: |
+          poetry config virtualenvs.in-project true
+          poetry install --no-interaction
+
+      - name: Run Tests
+        run: poetry run pytest
+```
+
+## Nix Package Cache
+
+Nix store can be massive for large projects. Sticky disks provide persistent Nix caches without impacting build times.
+
+```yaml
+jobs:
+  build:
+    runs-on: blacksmith-8vcpu-ubuntu-2204
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v24
+
+      - name: Mount Nix Store
+        uses: useblacksmith/stickydisk@v1
+        with:
+          key: ${{ github.repository }}-nix-cache-${{ runner.os }}
+          path: /nix
+
+      - name: Build
+        run: nix build
+
+      - name: Test
+        run: nix flake check
+```
+
+## End-to-End Testing
+
+### Playwright Browser Binaries
+
+Playwright browser downloads are large (~1GB) and slow. Sticky disks make them instantly available.
+
+```yaml
+jobs:
+  e2e-tests:
+    runs-on: blacksmith-4vcpu-ubuntu-2204
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+
+      - name: Mount Playwright Browsers
+        uses: useblacksmith/stickydisk@v1
+        with:
+          key: playwright-browsers-${{ runner.os }}
+          path: ~/.cache/ms-playwright
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps
+
+      - name: Run E2E Tests
+        run: npx playwright test
+```
+
+## Cache Performance Comparison
 
 | Caching Solution     | Cache Size | Average Download Speed | Time to Access |
 | -------------------- | ---------- | ---------------------- | -------------- |
 | GitHub Actions Cache | 6GB        | 90 MB/s                | ~1m6s          |
 | Blacksmith Cache     | 6GB        | 400 MB/s               | ~15s           |
 | Sticky Disks         | 6GB        | N/A                    | 3 seconds      |
+
+## Additional Use Cases
+
+Sticky disks are also used in production for:
+- **Database Fixtures**: Persistent test databases for E2E testing (~2TB across 3 installations)
+- **Android Gradle Cache**: Build cache for Android projects (~18GB per project)
+- **Rust Cargo Cache**: Dependency and build artifacts (~36GB)
+- **Cypress Cache**: E2E testing browser binaries
+- **Git LFS Objects**: Large file storage for game development and media projects
 
 # useblacksmith/stickydisk-delete
 
