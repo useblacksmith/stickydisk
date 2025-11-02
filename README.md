@@ -195,14 +195,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Nix
-        uses: cachix/install-nix-action@v24
+      - name: Create Nix Directories
+        run: |
+          sudo mkdir -p /nix/store
+          sudo chmod -R 777 /nix
 
       - name: Mount Nix Store
         uses: useblacksmith/stickydisk@v1
         with:
           key: ${{ github.repository }}-nix-cache-${{ runner.os }}
           path: /nix
+
+      - name: Install Nix
+        uses: nixbuild/nix-quick-install-action@v30
 
       - name: Build
         run: nix build
