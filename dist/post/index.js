@@ -36528,6 +36528,7 @@ async function cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey) {
 }
 async function run() {
     const stickyDiskPath = (0,core.getState)("STICKYDISK_PATH");
+    const internalMount = (0,core.getState)("STICKYDISK_INTERNAL_MOUNT");
     const exposeId = (0,core.getState)("STICKYDISK_EXPOSE_ID");
     const stickyDiskKey = (0,core.getState)("STICKYDISK_KEY");
     if (!stickyDiskPath) {
@@ -36570,19 +36571,41 @@ async function run() {
         // Drop page cache, dentries and inodes to ensure clean unmount
         // This helps prevent "device is busy" errors during unmount
         await execAsync("sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'");
-        // Unmount with retries.
+        // Unmount the bind mount first (user's mountpoint)
         for (let attempt = 1; attempt <= 10; attempt++) {
             try {
                 await execAsync(`sudo umount "${stickyDiskPath}"`);
-                core.info(`Successfully unmounted ${stickyDiskPath}`);
+                core.info(`Successfully unmounted bind mount at ${stickyDiskPath}`);
                 break;
             }
             catch (error) {
                 if (attempt === 10) {
                     throw error;
                 }
-                core.warning(`Unmount failed, retrying (${attempt}/10)...`);
+                core.warning(`Bind mount unmount failed, retrying (${attempt}/10)...`);
                 await new Promise((resolve) => setTimeout(resolve, 300));
+            }
+        }
+        // Unmount the internal mount (if it exists)
+        if (internalMount) {
+            for (let attempt = 1; attempt <= 10; attempt++) {
+                try {
+                    await execAsync(`sudo umount "${internalMount}"`);
+                    core.info(`Successfully unmounted internal mount at ${internalMount}`);
+                    // Clean up the internal mount directory
+                    await execAsync(`sudo rmdir "${internalMount}"`);
+                    break;
+                }
+                catch (error) {
+                    if (attempt === 10) {
+                        core.warning(`Failed to unmount internal mount at ${internalMount}: ${error instanceof Error ? error.message : String(error)}`);
+                        // Don't throw - this is non-fatal
+                    }
+                    else {
+                        core.warning(`Internal mount unmount failed, retrying (${attempt}/10)...`);
+                        await new Promise((resolve) => setTimeout(resolve, 300));
+                    }
+                }
             }
         }
         const stickyDiskError = (0,core.getState)("STICKYDISK_ERROR") === "true";

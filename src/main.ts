@@ -79,28 +79,6 @@ async function maybeFormatBlockDevice(device: string): Promise<string> {
     );
     core.debug(`Successfully formatted ${device} with ext4`);
 
-    // Remove lost+found directory to prevent permission issues.
-    // mkfs.ext4 always creates lost+found with root:root 0700 permissions for fsck recovery.
-    // This causes EACCES errors when tools (pnpm, yarn, npm, docker buildx) recursively scan
-    // directories mounted from sticky disks (e.g., ./node_modules, ./build-cache).
-    // For ephemeral CI cache filesystems, lost+found is unnecessary - corruption can be
-    // resolved by rebuilding the cache. Removing it prevents unpredictable build failures.
-    core.debug(`Removing lost+found directory from ${device}`);
-    const tempMount = `/tmp/stickydisk-init-${Date.now()}`;
-    try {
-      await execAsync(`sudo mkdir -p ${tempMount}`);
-      await execAsync(`sudo mount ${device} ${tempMount}`);
-      await execAsync(`sudo rm -rf ${tempMount}/lost+found`);
-      await execAsync(`sudo umount ${tempMount}`);
-      await execAsync(`sudo rmdir ${tempMount}`);
-      core.debug(`Removed lost+found directory from ${device}`);
-    } catch (error) {
-      core.warning(
-        `Failed to remove lost+found directory: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      // Non-fatal - continue even if cleanup fails
-    }
-
     return device;
   } catch (error) {
     if (error instanceof Error) {
@@ -110,40 +88,123 @@ async function maybeFormatBlockDevice(device: string): Promise<string> {
   }
 }
 
+async function checkAndPrepareWorkDir(
+  internalMount: string,
+): Promise<{ needsNewDisk: boolean }> {
+  const workDir = `${internalMount}/work`;
+
+  // Check if work/ directory already exists (new format disk)
+  try {
+    await execAsync(`sudo test -d ${workDir}`);
+    core.debug(`work/ directory already exists, disk is in new format`);
+    return { needsNewDisk: false };
+  } catch {
+    // work/ doesn't exist, check if there's old data
+  }
+
+  // Check if there are any files/directories at root (excluding lost+found)
+  // This indicates an old-format sticky disk
+  try {
+    const { stdout } = await execAsync(
+      `sudo find ${internalMount} -maxdepth 1 -mindepth 1 ! -name lost+found -print -quit`,
+    );
+
+    if (stdout.trim()) {
+      // Old format disk detected - needs to be cleared
+      core.warning(
+        `Detected old sticky disk format (data at filesystem root). This disk needs to be cleared for the new format.`,
+      );
+      return { needsNewDisk: true };
+    }
+
+    // No old data, just create work/ directory
+    core.debug(`No existing data found, creating fresh work/ directory`);
+    await execAsync(`sudo mkdir -p ${workDir}`);
+    return { needsNewDisk: false };
+  } catch (error) {
+    // Errors checking - create fresh work dir to be safe
+    core.warning(
+      `Error checking disk format: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    core.debug(`Creating fresh work/ directory despite errors`);
+    await execAsync(`sudo mkdir -p ${workDir}`);
+    return { needsNewDisk: false };
+  }
+}
+
 async function mountStickyDisk(
   stickyDiskKey: string,
   stickyDiskPath: string,
   signal: AbortSignal,
   controller: AbortController,
-): Promise<{ device: string; exposeId: string }> {
+): Promise<{ device: string; exposeId: string; internalMount: string }> {
   const timeoutId = setTimeout(() => controller.abort(), stickyDiskTimeoutMs);
   const stickyDiskResponse = await getStickyDisk(stickyDiskKey, { signal });
   const device = stickyDiskResponse.device;
   const exposeId = stickyDiskResponse.expose_id;
   clearTimeout(timeoutId);
   await maybeFormatBlockDevice(device);
-  // Create mount point with sudo (supports system directories like /nix, /mnt, etc.)
-  // Then change ownership to runner user so it's accessible
+
+  // Create internal mount point to hide lost+found from user's view
+  // This internal mount contains the full ext4 filesystem including lost+found
+  const internalMount = `/mnt/stickydisk/${exposeId}`;
+  await execAsync(`sudo mkdir -p ${internalMount}`);
+
+  // Mount the device to the internal location
+  await execAsync(`sudo mount ${device} ${internalMount}`);
+  core.debug(`Mounted ${device} to internal location ${internalMount}`);
+
+  // Check if this is an old-format disk that needs to be cleared
+  const { needsNewDisk } = await checkAndPrepareWorkDir(internalMount);
+
+  if (needsNewDisk) {
+    core.warning(
+      `Old sticky disk format detected (data at filesystem root, not in work/).`,
+    );
+    core.warning(
+      `This disk is incompatible with the new bind-mount approach.`,
+    );
+
+    // TODO: Implement proper disk deletion and retry logic
+    // The current approach of calling deleteStickyDisk + recursive mountStickyDisk
+    // may not properly invalidate the cache on the storage backend.
+    // Need to:
+    // 1. Unmount the current disk
+    // 2. Call the correct API to invalidate/delete the sticky disk
+    // 3. Request a fresh disk (ensuring we don't get the same one back)
+    //
+    // For now, fail fast and let the user clear the cache manually
+    throw new Error(
+      `Incompatible sticky disk format detected. Please clear the sticky disk cache and try again.`,
+    );
+  }
+
+  // Create a work subdirectory that will be exposed to the user
+  // This keeps lost+found at the filesystem root, outside the user's tree
+  const workDir = `${internalMount}/work`;
+  // Set reasonable permissions for typical CI users
+  await execAsync(`sudo chmod 0755 ${workDir}`);
+  await execAsync(`sudo chown $(id -u):$(id -g) ${workDir}`);
+
+  // Create the user's mount point with sudo (supports system directories like /nix, /mnt, etc.)
   await execAsync(`sudo mkdir -p ${stickyDiskPath}`);
   await execAsync(`sudo chown $(id -u):$(id -g) ${stickyDiskPath}`);
 
-  // Mount the device with default options
-  await execAsync(`sudo mount ${device} ${stickyDiskPath}`);
-
-  // After mounting, ensure the mounted filesystem is owned by runner user
-  // This is important because the mount operation might change ownership
-  await execAsync(`sudo chown $(id -u):$(id -g) ${stickyDiskPath}`);
+  // Bind-mount only the work subdirectory to the user's requested path
+  // This exposes only the work/ subdirectory, hiding lost+found from scanners
+  await execAsync(`sudo mount --bind ${workDir} ${stickyDiskPath}`);
 
   core.debug(
-    `${device} has been mounted to ${stickyDiskPath} with expose ID ${exposeId}`,
+    `${device} has been mounted to ${stickyDiskPath} (via bind mount from ${workDir}) with expose ID ${exposeId}`,
   );
-  return { device, exposeId };
+  return { device, exposeId, internalMount };
 }
 
 async function run(): Promise<void> {
   let stickyDiskError: Error | undefined;
   let exposeId: string | undefined;
   let device = "";
+  let internalMount = "";
   const stickyDiskKey = getInput("key");
   const stickyDiskPath = getInput("path");
 
@@ -159,14 +220,17 @@ async function run(): Promise<void> {
     const controller = new AbortController();
 
     try {
-      ({ device, exposeId } = await mountStickyDisk(
+      ({ device, exposeId, internalMount } = await mountStickyDisk(
         stickyDiskKey,
         stickyDiskPath,
         controller.signal,
         controller,
       ));
       saveState("STICKYDISK_EXPOSE_ID", exposeId);
-      core.debug(`Sticky disk mounted to ${device}, expose ID: ${exposeId}`);
+      saveState("STICKYDISK_INTERNAL_MOUNT", internalMount);
+      core.debug(
+        `Sticky disk mounted to ${device}, internal mount: ${internalMount}, expose ID: ${exposeId}`,
+      );
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
         core.warning("Request to get sticky disk timed out");
