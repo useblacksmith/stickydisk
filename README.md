@@ -11,8 +11,8 @@
 A GitHub Action that helps persist state written to disk across jobs. This action can serve as a superior alternative to the [Actions cache](https://github.com/useblacksmith/cache), especially when the cache artifacts are extremely large. Each sticky disk is hot-loaded into the runner and mounted at the specified path.
 The sticky disk is formatted as an ext4 filesystem.
 
-> [!CAUTION]
-> Alpha: This GitHub Action is currently in Alpha. There may be bugs, and the inputs/outputs and overall behavior may change without notice.
+> [!NOTE]
+> Beta: This GitHub Action is currently in Beta. The API is stable but some edge cases may still be discovered.
 
 # Architecture
 
