@@ -36570,6 +36570,13 @@ async function run() {
         // Drop page cache, dentries and inodes to ensure clean unmount
         // This helps prevent "device is busy" errors during unmount
         await execAsync("sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'");
+        try {
+            await execAsync(`sudo fsfreeze --freeze "${stickyDiskPath}"`);
+            core.info(`Froze filesystem at ${stickyDiskPath}`);
+        }
+        catch (error) {
+            core.warning(`Failed to freeze filesystem: ${error instanceof Error ? error.message : String(error)}`);
+        }
         // Unmount with retries.
         for (let attempt = 1; attempt <= 10; attempt++) {
             try {
@@ -36579,6 +36586,13 @@ async function run() {
             }
             catch (error) {
                 if (attempt === 10) {
+                    try {
+                        await execAsync(`sudo fsfreeze --unfreeze "${stickyDiskPath}"`);
+                        core.info(`Unfroze filesystem at ${stickyDiskPath}`);
+                    }
+                    catch (unfreezeError) {
+                        core.warning(`Failed to unfreeze filesystem: ${unfreezeError instanceof Error ? unfreezeError.message : String(unfreezeError)}`);
+                    }
                     throw error;
                 }
                 core.warning(`Unmount failed, retrying (${attempt}/10)...`);
