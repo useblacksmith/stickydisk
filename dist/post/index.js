@@ -36586,13 +36586,6 @@ async function run() {
             }
             catch (error) {
                 if (attempt === 10) {
-                    try {
-                        await execAsync(`sudo fsfreeze --unfreeze "${stickyDiskPath}"`);
-                        core.info(`Unfroze filesystem at ${stickyDiskPath}`);
-                    }
-                    catch (unfreezeError) {
-                        core.warning(`Failed to unfreeze filesystem: ${unfreezeError instanceof Error ? unfreezeError.message : String(unfreezeError)}`);
-                    }
                     throw error;
                 }
                 core.warning(`Unmount failed, retrying (${attempt}/10)...`);
