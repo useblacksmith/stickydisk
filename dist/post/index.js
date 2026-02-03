@@ -36549,6 +36549,8 @@ async function getDeviceFromMount(mountPoint) {
     }
     return null;
 }
+const FLUSH_TIMEOUT_SECS = 10;
+const TIMEOUT_EXIT_CODE = 124;
 async function flushBlockDevice(devicePath) {
     const deviceName = devicePath.replace("/dev/", "");
     if (!deviceName) {
@@ -36566,10 +36568,19 @@ async function flushBlockDevice(devicePath) {
     }
     const startTime = Date.now();
     try {
-        await execAsync(`sudo blockdev --flushbufs ${devicePath}`, {
-            timeout: 10000,
-        });
+        const { stdout, stderr } = await execAsync(`timeout ${FLUSH_TIMEOUT_SECS} sudo blockdev --flushbufs ${devicePath}; echo "EXIT_CODE:$?"`);
         const duration = Date.now() - startTime;
+        // Parse exit code from output
+        const exitCodeMatch = stdout.match(/EXIT_CODE:(\d+)/);
+        const exitCode = exitCodeMatch ? parseInt(exitCodeMatch[1], 10) : 0;
+        if (exitCode === TIMEOUT_EXIT_CODE) {
+            core.info(`guest flush timed out for ${devicePath} after ${FLUSH_TIMEOUT_SECS}s`);
+            return;
+        }
+        if (exitCode !== 0) {
+            core.info(`guest flush failed for ${devicePath} after ${duration}ms: exit code ${exitCode}, stderr: ${stderr}`);
+            return;
+        }
         let afterStats = "";
         try {
             const { stdout } = await execAsync(`cat ${statPath}`);
