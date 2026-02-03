@@ -193,7 +193,9 @@ async function run(): Promise<void> {
       }
       devicePath = await getDeviceFromMount(stickyDiskPath);
       if (devicePath) {
-        core.debug(`Found device ${devicePath} for mount point ${stickyDiskPath}`);
+        core.debug(
+          `Found device ${devicePath} for mount point ${stickyDiskPath}`,
+        );
       }
     } catch {
       // grep returns non-zero if no match found
