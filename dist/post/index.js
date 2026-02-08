@@ -36320,6 +36320,43 @@ var external_path_ = __nccwpck_require__(6928);
  */
 async function checkPreviousStepFailures(runnerBasePath) {
     try {
+        // Check if we're running inside a container.
+        // In container jobs, _diag is not mounted and not accessible.
+        const isContainer = await (async () => {
+            // Check for /.dockerenv file (docker-specific).
+            try {
+                await external_fs_.promises.access("/.dockerenv");
+                return true;
+            }
+            catch {
+                // Not a docker container, continue checking.
+            }
+            // Check cgroup for container indicators (works with cgroup v1).
+            try {
+                const cgroup = await external_fs_.promises.readFile("/proc/1/cgroup", "utf-8");
+                if (cgroup.includes("docker") || cgroup.includes("containerd")) {
+                    return true;
+                }
+            }
+            catch {
+                // /proc/1/cgroup unreadable or doesn't exist, continue checking.
+            }
+            // For cgroup v2, check if working directory starts with /__w/.
+            // This is GitHub Actions container-specific workspace mount.
+            const cwd = process.cwd();
+            if (cwd.startsWith("/__w/")) {
+                return true;
+            }
+            return false;
+        })();
+        if (isContainer) {
+            core.debug("Running inside container - _diag directory not accessible, skipping step failure check");
+            return {
+                hasFailures: false,
+                failedCount: 0,
+                // No error field - we want commits to proceed in containers
+            };
+        }
         // If no base path provided, try to detect the runner root
         if (!runnerBasePath) {
             // In GitHub Actions, we're typically in /home/runner/_work/{repo}/{repo}
