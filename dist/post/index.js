@@ -36526,6 +36526,77 @@ async function cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey) {
         // We don't want to fail the build if this fails so we swallow the error.
     }
 }
+async function getDeviceFromMount(mountPoint) {
+    try {
+        const { stdout } = await execAsync(`findmnt -n -o SOURCE "${mountPoint}"`);
+        const device = stdout.trim();
+        if (device) {
+            return device;
+        }
+    }
+    catch {
+        core.info(`findmnt failed for ${mountPoint}, trying mount command`);
+    }
+    try {
+        const { stdout } = await execAsync(`mount | grep " ${mountPoint} "`);
+        const match = stdout.match(/^(\/dev\/\S+)/);
+        if (match) {
+            return match[1];
+        }
+    }
+    catch {
+        core.info(`mount grep failed for ${mountPoint}`);
+    }
+    return null;
+}
+const FLUSH_TIMEOUT_SECS = 10;
+const TIMEOUT_EXIT_CODE = 124;
+async function flushBlockDevice(devicePath) {
+    const deviceName = devicePath.replace("/dev/", "");
+    if (!deviceName) {
+        core.info(`Could not extract device name from ${devicePath}`);
+        return;
+    }
+    const statPath = `/sys/block/${deviceName}/stat`;
+    let beforeStats = "";
+    try {
+        const { stdout } = await execAsync(`cat ${statPath}`);
+        beforeStats = stdout.trim();
+    }
+    catch {
+        core.info(`Could not read block device stats before flush: ${statPath}`);
+    }
+    const startTime = Date.now();
+    try {
+        const { stdout, stderr } = await execAsync(`timeout ${FLUSH_TIMEOUT_SECS} sudo blockdev --flushbufs ${devicePath}; echo "EXIT_CODE:$?"`);
+        const duration = Date.now() - startTime;
+        // Parse exit code from output
+        const exitCodeMatch = stdout.match(/EXIT_CODE:(\d+)/);
+        const exitCode = exitCodeMatch ? parseInt(exitCodeMatch[1], 10) : 0;
+        if (exitCode === TIMEOUT_EXIT_CODE) {
+            core.info(`guest flush timed out for ${devicePath} after ${FLUSH_TIMEOUT_SECS}s`);
+            return;
+        }
+        if (exitCode !== 0) {
+            core.info(`guest flush failed for ${devicePath} after ${duration}ms: exit code ${exitCode}, stderr: ${stderr}`);
+            return;
+        }
+        let afterStats = "";
+        try {
+            const { stdout } = await execAsync(`cat ${statPath}`);
+            afterStats = stdout.trim();
+        }
+        catch {
+            core.info(`Could not read block device stats after flush: ${statPath}`);
+        }
+        core.info(`guest flush duration: ${duration}ms, device: ${devicePath}, before_stats: ${beforeStats}, after_stats: ${afterStats}`);
+    }
+    catch (error) {
+        const duration = Date.now() - startTime;
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        core.info(`guest flush failed for ${devicePath} after ${duration}ms: ${errorMsg}`);
+    }
+}
 async function run() {
     const stickyDiskPath = (0,core.getState)("STICKYDISK_PATH");
     const exposeId = (0,core.getState)("STICKYDISK_EXPOSE_ID");
@@ -36535,12 +36606,17 @@ async function run() {
         return;
     }
     try {
-        // Check if path is mounted.
+        // Check if path is mounted and get the device name for later flush
+        let devicePath = null;
         try {
             const { stdout: mountOutput } = await execAsync(`mount | grep "${stickyDiskPath}"`);
             if (!mountOutput) {
                 core.debug(`${stickyDiskPath} is not mounted, skipping unmount`);
                 return;
+            }
+            devicePath = await getDeviceFromMount(stickyDiskPath);
+            if (devicePath) {
+                core.info(`Found device ${devicePath} for mount point ${stickyDiskPath}`);
             }
         }
         catch {
@@ -36584,6 +36660,14 @@ async function run() {
                 core.warning(`Unmount failed, retrying (${attempt}/10)...`);
                 await new Promise((resolve) => setTimeout(resolve, 300));
             }
+        }
+        // Flush block device buffers after unmount to ensure data durability
+        // before the Ceph RBD snapshot is taken. The device is still mapped even though unmounted.
+        if (devicePath) {
+            await flushBlockDevice(devicePath);
+        }
+        else {
+            core.info("Skipping durability flush: device path not found for mount point");
         }
         const stickyDiskError = (0,core.getState)("STICKYDISK_ERROR") === "true";
         // Check for previous step failures before committing
