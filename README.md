@@ -13,11 +13,11 @@ The sticky disk is formatted as an ext4 filesystem.
 
 ## Inputs
 
-| Input | Description | Required | Default |
-| --- | --- | --- | --- |
-| `key` | A unique key to identify the sticky disk | Yes | |
-| `path` | The path at which to mount the sticky disk | Yes | |
-| `fail-on-error` | Fail the action if a sticky disk cannot be provisioned | No | `false` |
+| Input           | Description                                            | Required | Default |
+| --------------- | ------------------------------------------------------ | -------- | ------- |
+| `key`           | A unique key to identify the sticky disk               | Yes      |         |
+| `path`          | The path at which to mount the sticky disk             | Yes      |         |
+| `fail-on-error` | Fail the action if a sticky disk cannot be provisioned | No       | `false` |
 
 By default, the action emits a warning if a sticky disk cannot be provisioned and allows the workflow to continue. Set `fail-on-error: true` to fail the step instead, which is useful for workflows that depend on the presence of a sticky disk.
 
