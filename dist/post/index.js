@@ -8769,7 +8769,7 @@ module.exports = {
 
 
 const { parseSetCookie } = __nccwpck_require__(8915)
-const { stringify, getHeadersList } = __nccwpck_require__(3834)
+const { stringify } = __nccwpck_require__(3834)
 const { webidl } = __nccwpck_require__(4222)
 const { Headers } = __nccwpck_require__(6349)
 
@@ -8845,14 +8845,13 @@ function getSetCookies (headers) {
 
   webidl.brandCheck(headers, Headers, { strict: false })
 
-  const cookies = getHeadersList(headers).cookies
+  const cookies = headers.getSetCookie()
 
   if (!cookies) {
     return []
   }
 
-  // In older versions of undici, cookies is a list of name:value.
-  return cookies.map((pair) => parseSetCookie(Array.isArray(pair) ? pair[1] : pair))
+  return cookies.map((pair) => parseSetCookie(pair))
 }
 
 /**
@@ -9279,13 +9278,14 @@ module.exports = {
 /***/ }),
 
 /***/ 3834:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+/***/ ((module) => {
 
 
 
-const assert = __nccwpck_require__(2613)
-const { kHeadersList } = __nccwpck_require__(6443)
-
+/**
+ * @param {string} value
+ * @returns {boolean}
+ */
 function isCTLExcludingHtab (value) {
   if (value.length === 0) {
     return false
@@ -9546,31 +9546,13 @@ function stringify (cookie) {
   return out.join('; ')
 }
 
-let kHeadersListNode
-
-function getHeadersList (headers) {
-  if (headers[kHeadersList]) {
-    return headers[kHeadersList]
-  }
-
-  if (!kHeadersListNode) {
-    kHeadersListNode = Object.getOwnPropertySymbols(headers).find(
-      (symbol) => symbol.description === 'headers list'
-    )
-
-    assert(kHeadersListNode, 'Headers cannot be parsed')
-  }
-
-  const headersList = headers[kHeadersListNode]
-  assert(headersList)
-
-  return headersList
-}
-
 module.exports = {
   isCTLExcludingHtab,
-  stringify,
-  getHeadersList
+  validateCookieName,
+  validateCookiePath,
+  validateCookieValue,
+  toIMFDate,
+  stringify
 }
 
 
@@ -11491,6 +11473,14 @@ const { isUint8Array, isArrayBuffer } = __nccwpck_require__(8253)
 const { File: UndiciFile } = __nccwpck_require__(3041)
 const { parseMIMEType, serializeAMimeType } = __nccwpck_require__(4322)
 
+let random
+try {
+  const crypto = __nccwpck_require__(7598)
+  random = (max) => crypto.randomInt(0, max)
+} catch {
+  random = (max) => Math.floor(Math.random(max))
+}
+
 let ReadableStream = globalThis.ReadableStream
 
 /** @type {globalThis['File']} */
@@ -11576,7 +11566,7 @@ function extractBody (object, keepalive = false) {
     // Set source to a copy of the bytes held by object.
     source = new Uint8Array(object.buffer.slice(object.byteOffset, object.byteOffset + object.byteLength))
   } else if (util.isFormDataLike(object)) {
-    const boundary = `----formdata-undici-0${`${Math.floor(Math.random() * 1e11)}`.padStart(11, '0')}`
+    const boundary = `----formdata-undici-0${`${random(1e11)}`.padStart(11, '0')}`
     const prefix = `--${boundary}\r\nContent-Disposition: form-data`
 
     /*! formdata-polyfill. MIT License. Jimmy Wärting <https://jimmy.warting.se/opensource> */
@@ -13553,6 +13543,7 @@ const {
   isValidHeaderName,
   isValidHeaderValue
 } = __nccwpck_require__(5523)
+const util = __nccwpck_require__(9023)
 const { webidl } = __nccwpck_require__(4222)
 const assert = __nccwpck_require__(2613)
 
@@ -14106,6 +14097,9 @@ Object.defineProperties(Headers.prototype, {
   [Symbol.toStringTag]: {
     value: 'Headers',
     configurable: true
+  },
+  [util.inspect.custom]: {
+    enumerable: false
   }
 })
 
@@ -23253,6 +23247,20 @@ class Pool extends PoolBase {
       ? { ...options.interceptors }
       : undefined
     this[kFactory] = factory
+
+    this.on('connectionError', (origin, targets, error) => {
+      // If a connection error occurs, we remove the client from the pool,
+      // and emit a connectionError event. They will not be re-used.
+      // Fixes https://github.com/nodejs/undici/issues/3895
+      for (const target of targets) {
+        // Do not use kRemoveClient here, as it will close the client,
+        // but the client cannot be closed in this state.
+        const idx = this[kClients].indexOf(target)
+        if (idx !== -1) {
+          this[kClients].splice(idx, 1)
+        }
+      }
+    })
   }
 
   [kGetDispatcher] () {
@@ -25635,6 +25643,13 @@ module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("https");
 /***/ ((module) => {
 
 module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("net");
+
+/***/ }),
+
+/***/ 7598:
+/***/ ((module) => {
+
+module.exports = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:crypto");
 
 /***/ }),
 
@@ -30650,10 +30665,12 @@ function parseContentType(contentType) {
 function requestHeader(useBinaryFormat, timeoutMs, userProvidedHeaders) {
     const result = new Headers(userProvidedHeaders !== null && userProvidedHeaders !== void 0 ? userProvidedHeaders : {});
     result.set(headerContentType, useBinaryFormat ? contentTypeProto : contentTypeJson);
-    // Note that we do not strictly comply with gRPC user agents.
-    // We use "connect-es/1.2.3" where gRPC would use "grpc-es/1.2.3".
-    // See https://github.com/grpc/grpc/blob/c462bb8d485fc1434ecfae438823ca8d14cf3154/doc/PROTOCOL-HTTP2.md#user-agents
-    result.set(headerUserAgent, "connect-es/1.6.1");
+    if (!result.has(headerUserAgent)) {
+        // Note that we do not strictly comply with gRPC user agents.
+        // We use "connect-es/1.2.3" where gRPC would use "grpc-es/1.2.3".
+        // See https://github.com/grpc/grpc/blob/c462bb8d485fc1434ecfae438823ca8d14cf3154/doc/PROTOCOL-HTTP2.md#user-agents
+        result.set(headerUserAgent, "connect-es/1.7.0");
+    }
     if (timeoutMs !== undefined) {
         result.set(headerTimeout, `${timeoutMs}m`);
     }
@@ -33791,7 +33808,17 @@ function makeUtilCommon() {
                 }
                 switch (m.kind) {
                     case "message":
-                        return m.T.equals(va, vb);
+                        let a = va;
+                        let b = vb;
+                        if (m.T.fieldWrapper) {
+                            if (a !== undefined && !isMessage(a)) {
+                                a = m.T.fieldWrapper.wrapField(a);
+                            }
+                            if (b !== undefined && !isMessage(b)) {
+                                b = m.T.fieldWrapper.wrapField(b);
+                            }
+                        }
+                        return m.T.equals(a, b);
                     case "enum":
                         return scalarEquals(ScalarType.INT32, va, vb);
                     case "scalar":
@@ -36066,18 +36093,15 @@ const connect_node_adapter_fallback = (request, response) => {
 
 
 
-;// CONCATENATED MODULE: ./node_modules/@buf/blacksmith_vm-agent.connectrpc_es/node_modules/@buf/blacksmith_vm-agent.bufbuild_es/stickydisk/v1/stickydisk_pb.js
-// @generated by protoc-gen-es v1.10.0
+;// CONCATENATED MODULE: ./node_modules/@buf/blacksmith_vm-agent.connectrpc_es/stickydisk/v1/stickydisk_connect.js
+// Stub generated from existing dist bundle - Buf BSR packages unavailable
+// @generated by protoc-gen-connect-es v1.6.1
 // @generated from file stickydisk/v1/stickydisk.proto (package stickydisk.v1, syntax proto3)
-/* eslint-disable */
-// @ts-nocheck
 
 
 
-/**
- * @generated from enum stickydisk.v1.Architecture
- */
-const Architecture = /*@__PURE__*/ proto3.makeEnum(
+
+const Architecture = proto3.makeEnum(
   "stickydisk.v1.Architecture",
   [
     {no: 0, name: "ARCHITECTURE_UNSPECIFIED", localName: "UNSPECIFIED"},
@@ -36086,75 +36110,48 @@ const Architecture = /*@__PURE__*/ proto3.makeEnum(
   ],
 );
 
-/**
- * @generated from message stickydisk.v1.GetStickyDiskRequest
- */
-const GetStickyDiskRequest = /*@__PURE__*/ proto3.makeMessageType(
+const GetStickyDiskRequest = proto3.makeMessageType(
   "stickydisk.v1.GetStickyDiskRequest",
   () => [
-    { no: 1, name: "sticky_disk_key", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 2, name: "region", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 3, name: "installation_model_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 4, name: "vm_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 5, name: "sticky_disk_type", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 6, name: "repo_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 7, name: "sticky_disk_token", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 1, name: "sticky_disk_key", kind: "scalar", T: 9 },
+    { no: 2, name: "region", kind: "scalar", T: 9 },
+    { no: 3, name: "installation_model_id", kind: "scalar", T: 9 },
+    { no: 4, name: "vm_id", kind: "scalar", T: 9 },
+    { no: 5, name: "sticky_disk_type", kind: "scalar", T: 9 },
+    { no: 6, name: "repo_name", kind: "scalar", T: 9 },
+    { no: 7, name: "sticky_disk_token", kind: "scalar", T: 9 },
   ],
 );
 
-/**
- * @generated from message stickydisk.v1.GetStickyDiskResponse
- */
-const GetStickyDiskResponse = /*@__PURE__*/ proto3.makeMessageType(
+const GetStickyDiskResponse = proto3.makeMessageType(
   "stickydisk.v1.GetStickyDiskResponse",
   () => [
-    { no: 1, name: "expose_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 2, name: "disk_identifier", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 3, name: "parent_snapshot_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 4, name: "clone_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 1, name: "expose_id", kind: "scalar", T: 9 },
+    { no: 2, name: "disk_identifier", kind: "scalar", T: 9 },
+    { no: 3, name: "parent_snapshot_name", kind: "scalar", T: 9 },
+    { no: 4, name: "clone_name", kind: "scalar", T: 9 },
   ],
 );
 
-/**
- * @generated from message stickydisk.v1.CommitStickyDiskRequest
- */
-const CommitStickyDiskRequest = /*@__PURE__*/ proto3.makeMessageType(
+const CommitStickyDiskRequest = proto3.makeMessageType(
   "stickydisk.v1.CommitStickyDiskRequest",
   () => [
-    { no: 1, name: "expose_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 2, name: "sticky_disk_key", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 3, name: "vm_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 4, name: "should_commit", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
-    { no: 5, name: "repo_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 6, name: "sticky_disk_token", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 7, name: "fs_disk_usage_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 1, name: "expose_id", kind: "scalar", T: 9 },
+    { no: 2, name: "sticky_disk_key", kind: "scalar", T: 9 },
+    { no: 3, name: "vm_id", kind: "scalar", T: 9 },
+    { no: 4, name: "should_commit", kind: "scalar", T: 8 },
+    { no: 5, name: "repo_name", kind: "scalar", T: 9 },
+    { no: 6, name: "sticky_disk_token", kind: "scalar", T: 9 },
+    { no: 7, name: "fs_disk_usage_bytes", kind: "scalar", T: 3 },
   ],
 );
 
-/**
- * @generated from message stickydisk.v1.CommitStickyDiskResponse
- */
-const CommitStickyDiskResponse = /*@__PURE__*/ proto3.makeMessageType(
+const CommitStickyDiskResponse = proto3.makeMessageType(
   "stickydisk.v1.CommitStickyDiskResponse",
   [],
 );
 
-/**
- * @generated from message stickydisk.v1.Metric
- */
-const Metric = /*@__PURE__*/ proto3.makeMessageType(
-  "stickydisk.v1.Metric",
-  () => [
-    { no: 1, name: "int_value", kind: "scalar", T: 3 /* ScalarType.INT64 */, oneof: "value" },
-    { no: 2, name: "double_value", kind: "scalar", T: 1 /* ScalarType.DOUBLE */, oneof: "value" },
-    { no: 3, name: "type", kind: "enum", T: proto3.getEnumType(Metric_MetricType) },
-  ],
-);
-
-/**
- * @generated from enum stickydisk.v1.Metric.MetricType
- */
-const Metric_MetricType = /*@__PURE__*/ proto3.makeEnum(
+const Metric_MetricType = proto3.makeEnum(
   "stickydisk.v1.Metric.MetricType",
   [
     {no: 0, name: "METRIC_TYPE_UNSPECIFIED"},
@@ -36169,118 +36166,81 @@ const Metric_MetricType = /*@__PURE__*/ proto3.makeEnum(
   ],
 );
 
-/**
- * @generated from message stickydisk.v1.ReportMetricRequest
- */
-const ReportMetricRequest = /*@__PURE__*/ proto3.makeMessageType(
+const Metric = proto3.makeMessageType(
+  "stickydisk.v1.Metric",
+  () => [
+    { no: 1, name: "int_value", kind: "scalar", T: 3, oneof: "value" },
+    { no: 2, name: "double_value", kind: "scalar", T: 1, oneof: "value" },
+    { no: 3, name: "type", kind: "enum", T: proto3.getEnumType(Metric_MetricType) },
+  ],
+);
+
+const ReportMetricRequest = proto3.makeMessageType(
   "stickydisk.v1.ReportMetricRequest",
   () => [
-    { no: 1, name: "repo_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 2, name: "region", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 1, name: "repo_name", kind: "scalar", T: 9 },
+    { no: 2, name: "region", kind: "scalar", T: 9 },
     { no: 3, name: "metric", kind: "message", T: Metric },
   ],
 );
 
-/**
- * @generated from message stickydisk.v1.ReportMetricResponse
- */
-const ReportMetricResponse = /*@__PURE__*/ proto3.makeMessageType(
+const ReportMetricResponse = proto3.makeMessageType(
   "stickydisk.v1.ReportMetricResponse",
   [],
 );
 
-/**
- * @generated from message stickydisk.v1.UpRequest
- */
-const UpRequest = /*@__PURE__*/ proto3.makeMessageType(
+const UpRequest = proto3.makeMessageType(
   "stickydisk.v1.UpRequest",
   [],
 );
 
-/**
- * @generated from message stickydisk.v1.UpResponse
- */
-const UpResponse = /*@__PURE__*/ proto3.makeMessageType(
+const UpResponse = proto3.makeMessageType(
   "stickydisk.v1.UpResponse",
   [],
 );
 
-/**
- * @generated from message stickydisk.v1.QueueDockerJobRequest
- */
-const QueueDockerJobRequest = /*@__PURE__*/ proto3.makeMessageType(
+const QueueDockerJobRequest = proto3.makeMessageType(
   "stickydisk.v1.QueueDockerJobRequest",
   () => [
-    { no: 1, name: "job_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 2, name: "tailscale_hostname", kind: "scalar", T: 9 /* ScalarType.STRING */ },
-    { no: 3, name: "vm_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 1, name: "job_name", kind: "scalar", T: 9 },
+    { no: 2, name: "tailscale_hostname", kind: "scalar", T: 9 },
+    { no: 3, name: "vm_id", kind: "scalar", T: 9 },
     { no: 4, name: "arch", kind: "enum", T: proto3.getEnumType(Architecture) },
   ],
 );
 
-/**
- * @generated from message stickydisk.v1.QueueDockerJobResponse
- */
-const QueueDockerJobResponse = /*@__PURE__*/ proto3.makeMessageType(
+const QueueDockerJobResponse = proto3.makeMessageType(
   "stickydisk.v1.QueueDockerJobResponse",
   [],
 );
 
-
-;// CONCATENATED MODULE: ./node_modules/@buf/blacksmith_vm-agent.connectrpc_es/stickydisk/v1/stickydisk_connect.js
-// @generated by protoc-gen-connect-es v1.6.1
-// @generated from file stickydisk/v1/stickydisk.proto (package stickydisk.v1, syntax proto3)
-/* eslint-disable */
-// @ts-nocheck
-
-
-
-
-/**
- * @generated from service stickydisk.v1.StickyDiskService
- */
 const StickyDiskService = {
   typeName: "stickydisk.v1.StickyDiskService",
   methods: {
-    /**
-     * @generated from rpc stickydisk.v1.StickyDiskService.GetStickyDisk
-     */
     getStickyDisk: {
       name: "GetStickyDisk",
       I: GetStickyDiskRequest,
       O: GetStickyDiskResponse,
       kind: MethodKind.Unary,
     },
-    /**
-     * @generated from rpc stickydisk.v1.StickyDiskService.CommitStickyDisk
-     */
     commitStickyDisk: {
       name: "CommitStickyDisk",
       I: CommitStickyDiskRequest,
       O: CommitStickyDiskResponse,
       kind: MethodKind.Unary,
     },
-    /**
-     * @generated from rpc stickydisk.v1.StickyDiskService.Up
-     */
     up: {
       name: "Up",
       I: UpRequest,
       O: UpResponse,
       kind: MethodKind.Unary,
     },
-    /**
-     * @generated from rpc stickydisk.v1.StickyDiskService.ReportMetric
-     */
     reportMetric: {
       name: "ReportMetric",
       I: ReportMetricRequest,
       O: ReportMetricResponse,
       kind: MethodKind.Unary,
     },
-    /**
-     * @generated from rpc stickydisk.v1.StickyDiskService.QueueDockerJob
-     */
     queueDockerJob: {
       name: "QueueDockerJob",
       I: QueueDockerJobRequest,
@@ -36289,7 +36249,6 @@ const StickyDiskService = {
     },
   }
 };
-
 
 ;// CONCATENATED MODULE: ./src/utils.ts
 
