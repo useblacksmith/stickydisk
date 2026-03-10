@@ -117,10 +117,14 @@ async function mountStickyDisk(
   controller: AbortController,
 ): Promise<{ device: string; exposeId: string }> {
   const timeoutId = setTimeout(() => controller.abort(), stickyDiskTimeoutMs);
-  const stickyDiskResponse = await getStickyDisk(stickyDiskKey, { signal });
+  let stickyDiskResponse: { expose_id: string; device: string };
+  try {
+    stickyDiskResponse = await getStickyDisk(stickyDiskKey, { signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
   const device = stickyDiskResponse.device;
   const exposeId = stickyDiskResponse.expose_id;
-  clearTimeout(timeoutId);
   await maybeFormatBlockDevice(device);
   // Create mount point with sudo (supports system directories like /nix, /mnt, etc.)
   // Then change ownership to runner user so it's accessible
@@ -175,7 +179,6 @@ async function run(): Promise<void> {
     }
   } catch (error) {
     if (error instanceof Error) {
-      core.warning(`Error getting sticky disk: ${error}`);
       stickyDiskError = error;
       saveState("STICKYDISK_ERROR", "true");
     }

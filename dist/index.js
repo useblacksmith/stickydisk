@@ -36400,10 +36400,15 @@ async function maybeFormatBlockDevice(device) {
 }
 async function mountStickyDisk(stickyDiskKey, stickyDiskPath, signal, controller) {
     const timeoutId = setTimeout(() => controller.abort(), stickyDiskTimeoutMs);
-    const stickyDiskResponse = await getStickyDisk(stickyDiskKey, { signal });
+    let stickyDiskResponse;
+    try {
+        stickyDiskResponse = await getStickyDisk(stickyDiskKey, { signal });
+    }
+    finally {
+        clearTimeout(timeoutId);
+    }
     const device = stickyDiskResponse.device;
     const exposeId = stickyDiskResponse.expose_id;
-    clearTimeout(timeoutId);
     await maybeFormatBlockDevice(device);
     // Create mount point with sudo (supports system directories like /nix, /mnt, etc.)
     // Then change ownership to runner user so it's accessible
@@ -36443,7 +36448,6 @@ async function run() {
     }
     catch (error) {
         if (error instanceof Error) {
-            core.warning(`Error getting sticky disk: ${error}`);
             stickyDiskError = error;
             (0,core.saveState)("STICKYDISK_ERROR", "true");
         }
