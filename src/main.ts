@@ -150,6 +150,7 @@ async function run(): Promise<void> {
   let device = "";
   const stickyDiskKey = getInput("key");
   const stickyDiskPath = getInput("path");
+  const failOnError = getInput("fail-on-error") === "true";
 
   // Save these values to GitHub Actions state
   saveState("STICKYDISK_PATH", stickyDiskPath);
@@ -185,7 +186,11 @@ async function run(): Promise<void> {
   }
 
   if (stickyDiskError) {
-    core.warning(`Error getting sticky disk: ${stickyDiskError}`);
+    if (failOnError) {
+      core.setFailed(`Failed to get sticky disk: ${stickyDiskError}`);
+    } else {
+      core.warning(`Error getting sticky disk: ${stickyDiskError}`);
+    }
   }
 }
 

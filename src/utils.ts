@@ -1,6 +1,6 @@
 import { createClient } from "@connectrpc/connect";
 import { createGrpcTransport } from "@connectrpc/connect-node";
-import { StickyDiskService } from "@buf/blacksmith_vm-agent.connectrpc_es/stickydisk/v1/stickydisk_connect";
+import { StickyDiskService } from "./gen/stickydisk_connect";
 import * as core from "@actions/core";
 
 export function createStickyDiskClient() {

@@ -11,6 +11,10 @@ inputs:
   path:
     description: "The path at which to mount the sticky disk"
     required: true
+  fail-on-error:
+    description: "Fail the action if a sticky disk cannot be provisioned"
+    required: false
+    default: "false"
 runs:
   using: "node24"
   main: "dist/index.js"
