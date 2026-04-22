@@ -154,6 +154,7 @@ async function run(): Promise<void> {
   // Save these values to GitHub Actions state
   saveState("STICKYDISK_PATH", stickyDiskPath);
   saveState("STICKYDISK_KEY", stickyDiskKey);
+  saveState("STICKYDISK_COMMIT", getInput("commit"));
 
   core.info(
     `Mounting sticky disk at ${stickyDiskPath} with key ${stickyDiskKey}`,
