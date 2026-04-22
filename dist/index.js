@@ -36431,6 +36431,7 @@ async function run() {
     // Save these values to GitHub Actions state
     (0,core.saveState)("STICKYDISK_PATH", stickyDiskPath);
     (0,core.saveState)("STICKYDISK_KEY", stickyDiskKey);
+    (0,core.saveState)("STICKYDISK_COMMIT", (0,core.getInput)("commit"));
     core.info(`Mounting sticky disk at ${stickyDiskPath} with key ${stickyDiskKey}`);
     try {
         const controller = new AbortController();
