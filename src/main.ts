@@ -170,6 +170,9 @@ async function run(): Promise<void> {
         controller,
       ));
       saveState("STICKYDISK_EXPOSE_ID", exposeId);
+      core.setOutput("expose-id", exposeId);
+      core.setOutput("key", stickyDiskKey);
+      core.setOutput("path", stickyDiskPath);
       core.debug(`Sticky disk mounted to ${device}, expose ID: ${exposeId}`);
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
