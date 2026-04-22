@@ -36437,6 +36437,9 @@ async function run() {
         try {
             ({ device, exposeId } = await mountStickyDisk(stickyDiskKey, stickyDiskPath, controller.signal, controller));
             (0,core.saveState)("STICKYDISK_EXPOSE_ID", exposeId);
+            core.setOutput("expose-id", exposeId);
+            core.setOutput("key", stickyDiskKey);
+            core.setOutput("path", stickyDiskPath);
             core.debug(`Sticky disk mounted to ${device}, expose ID: ${exposeId}`);
         }
         catch (error) {
