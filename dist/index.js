@@ -36427,7 +36427,8 @@ async function run() {
     let exposeId;
     let device = "";
     const stickyDiskKey = (0,core.getInput)("key");
-    const stickyDiskPath = (0,core.getInput)("path");
+    const rawPath = (0,core.getInput)("path");
+    const stickyDiskPath = (rawPath === "~" || rawPath.startsWith("~/")) ? (process.env.HOME ?? "/home/runner") + rawPath.slice(1) : rawPath;
     // Save these values to GitHub Actions state
     (0,core.saveState)("STICKYDISK_PATH", stickyDiskPath);
     (0,core.saveState)("STICKYDISK_KEY", stickyDiskKey);

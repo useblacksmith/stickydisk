@@ -3,6 +3,7 @@ import * as core from "@actions/core";
 import { promisify } from "util";
 import { exec } from "child_process";
 import { createStickyDiskClient } from "./utils";
+import { resolveTilde } from "./path";
 
 const execAsync = promisify(exec);
 
@@ -149,7 +150,7 @@ async function run(): Promise<void> {
   let exposeId: string | undefined;
   let device = "";
   const stickyDiskKey = getInput("key");
-  const stickyDiskPath = getInput("path");
+  const stickyDiskPath = resolveTilde(getInput("path"));
 
   // Save these values to GitHub Actions state
   saveState("STICKYDISK_PATH", stickyDiskPath);
