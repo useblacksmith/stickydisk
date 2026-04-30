@@ -167,7 +167,9 @@ jobs:
             echo ""
             echo "Users can now reference this action using:"
             echo '```yaml'
-            echo "- uses: $REPOSITORY@$MAJOR_VERSION"
+            if [[ "$UPDATE_MAJOR" == "true" && "$VERSION" != *-* ]]; then
+              echo "- uses: $REPOSITORY@$MAJOR_VERSION"
+            fi
             echo "- uses: $REPOSITORY@$VERSION"
             echo '```'
             echo ""
