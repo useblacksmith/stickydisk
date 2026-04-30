@@ -6,7 +6,10 @@ import {
 
 describe("path helpers", () => {
   it("normalizes tilde and relative mount paths before saving state", () => {
-    const options = { cwd: "/home/runner/_work/repo/repo", home: "/home/runner" };
+    const options = {
+      cwd: "/home/runner/_work/repo/repo",
+      home: "/home/runner",
+    };
 
     expect(normalizeMountPath("~", options)).toBe("/home/runner");
     expect(normalizeMountPath("~/.npm", options)).toBe("/home/runner/.npm");

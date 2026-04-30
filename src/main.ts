@@ -155,7 +155,9 @@ async function mountStickyDisk(
   }
 
   // Mount the device with default options
-  await execAsync(`sudo mount ${shellQuote(device)} ${shellQuote(stickyDiskPath)}`);
+  await execAsync(
+    `sudo mount ${shellQuote(device)} ${shellQuote(stickyDiskPath)}`,
+  );
 
   // After mounting, ensure the mounted filesystem is owned by runner user
   // This is important because the mount operation might change ownership
