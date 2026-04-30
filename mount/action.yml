@@ -1,6 +1,6 @@
-name: "Blacksmith Sticky Disk"
+name: "Blacksmith Sticky Disk — Mount"
 author: Aditya Maru
-description: "Creates a sticky disk on Blacksmith"
+description: "Mount a Blacksmith sticky disk without auto-committing on teardown. Use stickydisk/commit to commit explicitly."
 branding:
   icon: folder-plus
   color: black
@@ -15,10 +15,9 @@ outputs:
   expose-id:
     description: "The expose ID for the mounted disk (pass to stickydisk/commit)"
   key:
-    description: "The sticky disk key (pass-through)"
+    description: "The sticky disk key (pass-through for convenience)"
   path:
-    description: "The mount path (pass-through)"
+    description: "The mount path (pass-through for convenience)"
 runs:
   using: "node24"
-  main: "dist/index.js"
-  post: "dist/post/index.js"
+  main: "../dist/index.js"

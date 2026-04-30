@@ -1,0 +1,19 @@
+name: "Blacksmith Sticky Disk — Commit"
+author: Aditya Maru
+description: "Unmount and commit a Blacksmith sticky disk. Run as a regular step after stickydisk/mount."
+branding:
+  icon: folder-plus
+  color: black
+inputs:
+  expose-id:
+    description: "The expose ID from the mount step"
+    required: true
+  key:
+    description: "The sticky disk key (must match the mount step)"
+    required: true
+  path:
+    description: "The mount path (must match the mount step, tilde OK)"
+    required: true
+runs:
+  using: "node24"
+  main: "../dist/commit/index.js"
