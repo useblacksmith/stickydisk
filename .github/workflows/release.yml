@@ -23,12 +23,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4.2.2
         with:
+          ref: main
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Validate version format
+        env:
+          VERSION: ${{ github.event.inputs.version }}
         run: |
-          VERSION="${{ github.event.inputs.version }}"
           if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
             echo "Error: Version must be in format vX.Y.Z or vX.Y.Z-prerelease"
             echo "Examples: v1.1.0, v1.2.0-beta.1"
@@ -37,8 +39,9 @@ jobs:
           echo "Version format is valid: $VERSION"
 
       - name: Check if version already exists
+        env:
+          VERSION: ${{ github.event.inputs.version }}
         run: |
-          VERSION="${{ github.event.inputs.version }}"
           if git rev-parse "$VERSION" >/dev/null 2>&1; then
             echo "Error: Tag $VERSION already exists"
             exit 1
@@ -75,22 +78,25 @@ jobs:
         run: npm test
 
       - name: Configure git
+        env:
+          GIT_USER: ${{ github.actor }}
         run: |
-          git config user.name "${{ github.actor }}"
-          git config user.email "${{ github.actor }}@users.noreply.github.com"
+          git config user.name "$GIT_USER"
+          git config user.email "${GIT_USER}@users.noreply.github.com"
 
       - name: Create semver tag
+        env:
+          VERSION: ${{ github.event.inputs.version }}
         run: |
-          VERSION="${{ github.event.inputs.version }}"
           git tag -a "$VERSION" -m "Release $VERSION"
           git push origin "$VERSION"
           echo "Created and pushed tag: $VERSION"
 
       - name: Update major version tag
         if: github.event.inputs.update-major == 'true'
+        env:
+          VERSION: ${{ github.event.inputs.version }}
         run: |
-          VERSION="${{ github.event.inputs.version }}"
-
           # Extract major version (e.g., v1 from v1.2.3)
           MAJOR_VERSION=$(echo "$VERSION" | grep -oE '^v[0-9]+')
 
@@ -108,9 +114,8 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ github.event.inputs.version }}
         run: |
-          VERSION="${{ github.event.inputs.version }}"
-
           # Get the previous semver tag (v*.*.*, not v1/v2 major tags)
           # This ensures predictable comparisons by excluding major version tags
           PREVIOUS_TAG=$(git tag -l 'v*.*.*' --sort=-version:refname | grep -v "^$VERSION$" | head -n 1 || echo "")
@@ -131,8 +136,11 @@ jobs:
           echo "Created GitHub release: $VERSION"
 
       - name: Summary
+        env:
+          VERSION: ${{ github.event.inputs.version }}
+          UPDATE_MAJOR: ${{ github.event.inputs.update-major }}
+          REPOSITORY: ${{ github.repository }}
         run: |
-          VERSION="${{ github.event.inputs.version }}"
           MAJOR_VERSION=$(echo "$VERSION" | grep -oE '^v[0-9]+')
 
           {
@@ -143,7 +151,7 @@ jobs:
             echo "### Tags Created"
             echo "- \`$VERSION\` (semver tag)"
 
-            if [[ "${{ github.event.inputs.update-major }}" == "true" ]]; then
+            if [[ "$UPDATE_MAJOR" == "true" ]]; then
               echo "- \`$MAJOR_VERSION\` (major version tag, updated)"
             fi
 
@@ -156,5 +164,5 @@ jobs:
             echo "- uses: useblacksmith/stickydisk@$VERSION"
             echo '```'
             echo ""
-            echo "[View Release](https://github.com/${{ github.repository }}/releases/tag/$VERSION)"
+            echo "[View Release](https://github.com/$REPOSITORY/releases/tag/$VERSION)"
           } >> "$GITHUB_STEP_SUMMARY"
