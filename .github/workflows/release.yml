@@ -97,6 +97,13 @@ jobs:
         env:
           VERSION: ${{ github.event.inputs.version }}
         run: |
+          # Skip moving the floating major tag for prereleases (e.g., v2.0.0-beta.1).
+          # Otherwise consumers pinning @v2 would silently pick up unstable code.
+          if [[ "$VERSION" == *-* ]]; then
+            echo "Skipping major version tag update: $VERSION is a prerelease"
+            exit 0
+          fi
+
           # Extract major version (e.g., v1 from v1.2.3)
           MAJOR_VERSION=$(echo "$VERSION" | grep -oE '^v[0-9]+')
 
@@ -151,7 +158,7 @@ jobs:
             echo "### Tags Created"
             echo "- \`$VERSION\` (semver tag)"
 
-            if [[ "$UPDATE_MAJOR" == "true" ]]; then
+            if [[ "$UPDATE_MAJOR" == "true" && "$VERSION" != *-* ]]; then
               echo "- \`$MAJOR_VERSION\` (major version tag, updated)"
             fi
 
