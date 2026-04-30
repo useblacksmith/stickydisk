@@ -2,7 +2,13 @@ import { getInput, saveState } from "@actions/core";
 import * as core from "@actions/core";
 import { promisify } from "util";
 import { exec } from "child_process";
+import * as path from "path";
 import { createStickyDiskClient } from "./utils";
+import {
+  getWorkspaceLocalParentToChown,
+  normalizeMountPath,
+  shellQuote,
+} from "./path";
 
 const execAsync = promisify(exec);
 
@@ -126,17 +132,34 @@ async function mountStickyDisk(
   const device = stickyDiskResponse.device;
   const exposeId = stickyDiskResponse.expose_id;
   await maybeFormatBlockDevice(device);
+  const parentPath = path.dirname(stickyDiskPath);
+  try {
+    await execAsync(`mkdir -p ${shellQuote(parentPath)}`);
+  } catch (error) {
+    core.debug(
+      `Could not create mount parent ${parentPath} as current user: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
   // Create mount point with sudo (supports system directories like /nix, /mnt, etc.)
   // Then change ownership to runner user so it's accessible
-  await execAsync(`sudo mkdir -p ${stickyDiskPath}`);
-  await execAsync(`sudo chown $(id -u):$(id -g) ${stickyDiskPath}`);
+  await execAsync(`sudo mkdir -p ${shellQuote(stickyDiskPath)}`);
+  await execAsync(`sudo chown $(id -u):$(id -g) ${shellQuote(stickyDiskPath)}`);
+
+  const workspaceParentPath = getWorkspaceLocalParentToChown(stickyDiskPath);
+  if (workspaceParentPath) {
+    // Nested workspace mounts such as .nx/cache need a writable parent so tools can recreate them.
+    await execAsync(
+      `sudo chown $(id -u):$(id -g) ${shellQuote(workspaceParentPath)}`,
+    );
+  }
 
   // Mount the device with default options
-  await execAsync(`sudo mount ${device} ${stickyDiskPath}`);
+  await execAsync(`sudo mount ${shellQuote(device)} ${shellQuote(stickyDiskPath)}`);
 
   // After mounting, ensure the mounted filesystem is owned by runner user
   // This is important because the mount operation might change ownership
-  await execAsync(`sudo chown $(id -u):$(id -g) ${stickyDiskPath}`);
+  await execAsync(`sudo chown $(id -u):$(id -g) ${shellQuote(stickyDiskPath)}`);
 
   core.debug(
     `${device} has been mounted to ${stickyDiskPath} with expose ID ${exposeId}`,
@@ -149,7 +172,7 @@ async function run(): Promise<void> {
   let exposeId: string | undefined;
   let device = "";
   const stickyDiskKey = getInput("key");
-  const stickyDiskPath = getInput("path");
+  const stickyDiskPath = normalizeMountPath(getInput("path"));
 
   // Save these values to GitHub Actions state
   saveState("STICKYDISK_PATH", stickyDiskPath);
