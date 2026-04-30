@@ -123,6 +123,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ github.event.inputs.version }}
         run: |
+          # Mark prereleases (e.g. v2.0.0-beta.1) so they show up as
+          # such on the GitHub Releases page instead of as latest.
+          PRERELEASE_FLAG=()
+          if [[ "$VERSION" == *-* ]]; then
+            PRERELEASE_FLAG=(--prerelease)
+            echo "Marking $VERSION as a prerelease"
+          fi
+
           # Get the previous semver tag (v*.*.*, not v1/v2 major tags)
           # This ensures predictable comparisons by excluding major version tags
           PREVIOUS_TAG=$(git tag -l 'v*.*.*' --sort=-version:refname | grep -v "^$VERSION$" | head -n 1 || echo "")
@@ -131,13 +139,15 @@ jobs:
             echo "No previous tag found, generating notes from all commits"
             gh release create "$VERSION" \
               --title "$VERSION" \
-              --generate-notes
+              --generate-notes \
+              "${PRERELEASE_FLAG[@]}"
           else
             echo "Generating release notes from $PREVIOUS_TAG to $VERSION"
             gh release create "$VERSION" \
               --title "$VERSION" \
               --generate-notes \
-              --notes-start-tag "$PREVIOUS_TAG"
+              --notes-start-tag "$PREVIOUS_TAG" \
+              "${PRERELEASE_FLAG[@]}"
           fi
 
           echo "Created GitHub release: $VERSION"
