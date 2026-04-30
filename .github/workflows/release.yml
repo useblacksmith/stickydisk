@@ -87,7 +87,7 @@ jobs:
           echo "Created and pushed tag: $VERSION"
 
       - name: Update major version tag
-        if: github.event.inputs.update-major
+        if: github.event.inputs.update-major == 'true'
         run: |
           VERSION="${{ github.event.inputs.version }}"
 
