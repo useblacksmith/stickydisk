@@ -27416,6 +27416,8 @@ var core = __nccwpck_require__(7484);
 var external_util_ = __nccwpck_require__(9023);
 // EXTERNAL MODULE: external "child_process"
 var external_child_process_ = __nccwpck_require__(5317);
+// EXTERNAL MODULE: external "path"
+var external_path_ = __nccwpck_require__(6928);
 ;// CONCATENATED MODULE: ./node_modules/@bufbuild/protobuf/dist/esm/service-type.js
 // Copyright 2021-2024 Buf Technologies, Inc.
 //
@@ -36305,7 +36307,42 @@ function createStickyDiskClient() {
     return createClient(StickyDiskService, transport);
 }
 
+// EXTERNAL MODULE: external "os"
+var external_os_ = __nccwpck_require__(857);
+;// CONCATENATED MODULE: ./src/path.ts
+
+
+function shellQuote(value) {
+    return `'${value.replace(/'/g, "'\\''")}'`;
+}
+function normalizeMountPath(inputPath, options) {
+    var _a, _b;
+    const home = (_a = options === null || options === void 0 ? void 0 : options.home) !== null && _a !== void 0 ? _a : (0,external_os_.homedir)();
+    const cwd = (_b = options === null || options === void 0 ? void 0 : options.cwd) !== null && _b !== void 0 ? _b : process.cwd();
+    if (inputPath === "~") {
+        return home;
+    }
+    if (inputPath.startsWith("~/")) {
+        return external_path_.join(home, inputPath.slice(2));
+    }
+    if (external_path_.isAbsolute(inputPath)) {
+        return external_path_.normalize(inputPath);
+    }
+    return external_path_.resolve(cwd, inputPath);
+}
+function getWorkspaceLocalParentToChown(mountPath, cwd = process.cwd()) {
+    const workspacePath = external_path_.resolve(cwd);
+    const parentPath = external_path_.dirname(external_path_.resolve(mountPath));
+    if (parentPath !== workspacePath &&
+        parentPath.startsWith(`${workspacePath}${external_path_.sep}`)) {
+        return parentPath;
+    }
+    return null;
+}
+
 ;// CONCATENATED MODULE: ./src/main.ts
+
+
 
 
 
@@ -36410,15 +36447,27 @@ async function mountStickyDisk(stickyDiskKey, stickyDiskPath, signal, controller
     const device = stickyDiskResponse.device;
     const exposeId = stickyDiskResponse.expose_id;
     await maybeFormatBlockDevice(device);
+    const parentPath = external_path_.dirname(stickyDiskPath);
+    try {
+        await execAsync(`mkdir -p ${shellQuote(parentPath)}`);
+    }
+    catch (error) {
+        core.debug(`Could not create mount parent ${parentPath} as current user: ${error instanceof Error ? error.message : String(error)}`);
+    }
     // Create mount point with sudo (supports system directories like /nix, /mnt, etc.)
     // Then change ownership to runner user so it's accessible
-    await execAsync(`sudo mkdir -p ${stickyDiskPath}`);
-    await execAsync(`sudo chown $(id -u):$(id -g) ${stickyDiskPath}`);
+    await execAsync(`sudo mkdir -p ${shellQuote(stickyDiskPath)}`);
+    await execAsync(`sudo chown $(id -u):$(id -g) ${shellQuote(stickyDiskPath)}`);
+    const workspaceParentPath = getWorkspaceLocalParentToChown(stickyDiskPath);
+    if (workspaceParentPath) {
+        // Nested workspace mounts such as .nx/cache need a writable parent so tools can recreate them.
+        await execAsync(`sudo chown $(id -u):$(id -g) ${shellQuote(workspaceParentPath)}`);
+    }
     // Mount the device with default options
-    await execAsync(`sudo mount ${device} ${stickyDiskPath}`);
+    await execAsync(`sudo mount ${shellQuote(device)} ${shellQuote(stickyDiskPath)}`);
     // After mounting, ensure the mounted filesystem is owned by runner user
     // This is important because the mount operation might change ownership
-    await execAsync(`sudo chown $(id -u):$(id -g) ${stickyDiskPath}`);
+    await execAsync(`sudo chown $(id -u):$(id -g) ${shellQuote(stickyDiskPath)}`);
     core.debug(`${device} has been mounted to ${stickyDiskPath} with expose ID ${exposeId}`);
     return { device, exposeId };
 }
@@ -36427,7 +36476,7 @@ async function run() {
     let exposeId;
     let device = "";
     const stickyDiskKey = (0,core.getInput)("key");
-    const stickyDiskPath = (0,core.getInput)("path");
+    const stickyDiskPath = normalizeMountPath((0,core.getInput)("path"));
     // Save these values to GitHub Actions state
     (0,core.saveState)("STICKYDISK_PATH", stickyDiskPath);
     (0,core.saveState)("STICKYDISK_KEY", stickyDiskKey);
