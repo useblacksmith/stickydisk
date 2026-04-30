@@ -1,0 +1,160 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (e.g., v1.1.0)"
+        required: true
+        type: string
+      update-major:
+        description: "Update major version tag (e.g., v1)"
+        required: true
+        type: boolean
+        default: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate version format
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+            echo "Error: Version must be in format vX.Y.Z or vX.Y.Z-prerelease"
+            echo "Examples: v1.1.0, v1.2.0-beta.1"
+            exit 1
+          fi
+          echo "Version format is valid: $VERSION"
+
+      - name: Check if version already exists
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          if git rev-parse "$VERSION" >/dev/null 2>&1; then
+            echo "Error: Tag $VERSION already exists"
+            exit 1
+          fi
+          echo "Version $VERSION is available"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4.1.0
+        with:
+          node-version-file: .nvmrc
+
+      - name: Setup buf
+        uses: bufbuild/buf-setup-action@v1
+        with:
+          github_token: ${{ github.token }}
+
+      - name: Configure npm for buf registry
+        env:
+          BUF_TOKEN: ${{ secrets.BUF_TOKEN }}
+        run: |
+          npm config set @buf:registry https://buf.build/gen/npm/v1/
+          npm config set //buf.build/gen/npm/v1/:_authToken "$BUF_TOKEN"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run lint
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Run tests
+        run: npm test
+
+      - name: Configure git
+        run: |
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+
+      - name: Create semver tag
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          git tag -a "$VERSION" -m "Release $VERSION"
+          git push origin "$VERSION"
+          echo "Created and pushed tag: $VERSION"
+
+      - name: Update major version tag
+        if: github.event.inputs.update-major
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+
+          # Extract major version (e.g., v1 from v1.2.3)
+          MAJOR_VERSION=$(echo "$VERSION" | grep -oE '^v[0-9]+')
+
+          echo "Updating major version tag: $MAJOR_VERSION"
+
+          # Delete remote tag if it exists
+          git push origin ":refs/tags/$MAJOR_VERSION" 2>/dev/null || true
+
+          # Create and push the major version tag
+          git tag -fa "$MAJOR_VERSION" -m "Update $MAJOR_VERSION to $VERSION"
+          git push --force origin "$MAJOR_VERSION"
+
+          echo "Updated and pushed tag: $MAJOR_VERSION -> $VERSION"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+
+          # Get the previous semver tag (v*.*.*, not v1/v2 major tags)
+          # This ensures predictable comparisons by excluding major version tags
+          PREVIOUS_TAG=$(git tag -l 'v*.*.*' --sort=-version:refname | grep -v "^$VERSION$" | head -n 1 || echo "")
+
+          if [ -z "$PREVIOUS_TAG" ]; then
+            echo "No previous tag found, generating notes from all commits"
+            gh release create "$VERSION" \
+              --title "$VERSION" \
+              --generate-notes
+          else
+            echo "Generating release notes from $PREVIOUS_TAG to $VERSION"
+            gh release create "$VERSION" \
+              --title "$VERSION" \
+              --generate-notes \
+              --notes-start-tag "$PREVIOUS_TAG"
+          fi
+
+          echo "Created GitHub release: $VERSION"
+
+      - name: Summary
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          MAJOR_VERSION=$(echo "$VERSION" | grep -oE '^v[0-9]+')
+
+          {
+            echo "## Release Summary"
+            echo ""
+            echo "Successfully released **$VERSION**"
+            echo ""
+            echo "### Tags Created"
+            echo "- \`$VERSION\` (semver tag)"
+
+            if [[ "${{ github.event.inputs.update-major }}" == "true" ]]; then
+              echo "- \`$MAJOR_VERSION\` (major version tag, updated)"
+            fi
+
+            echo ""
+            echo "### Usage"
+            echo ""
+            echo "Users can now reference this action using:"
+            echo '```yaml'
+            echo "- uses: useblacksmith/stickydisk@$MAJOR_VERSION"
+            echo "- uses: useblacksmith/stickydisk@$VERSION"
+            echo '```'
+            echo ""
+            echo "[View Release](https://github.com/${{ github.repository }}/releases/tag/$VERSION)"
+          } >> "$GITHUB_STEP_SUMMARY"
