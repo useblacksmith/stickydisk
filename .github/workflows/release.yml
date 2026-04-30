@@ -131,9 +131,12 @@ jobs:
             echo "Marking $VERSION as a prerelease"
           fi
 
-          # Get the previous semver tag (v*.*.*, not v1/v2 major tags)
-          # This ensures predictable comparisons by excluding major version tags
-          PREVIOUS_TAG=$(git tag -l 'v*.*.*' --sort=-version:refname | grep -v "^$VERSION$" | head -n 1 || echo "")
+          # Get the previous semver tag (v*.*.*, not v1/v2 major tags).
+          # Tell git's version sort to treat '-' as a prerelease suffix so
+          # v1.0.0-alpha sorts before v1.0.0 (matches SemVer ordering).
+          # Without this, --sort=-version:refname puts v1.0.0-alpha *after*
+          # v1.0.0, picking the prerelease as the previous tag.
+          PREVIOUS_TAG=$(git -c versionsort.suffix=- tag -l 'v*.*.*' --sort=-version:refname | grep -v "^$VERSION$" | head -n 1 || echo "")
 
           if [ -z "$PREVIOUS_TAG" ]; then
             echo "No previous tag found, generating notes from all commits"
