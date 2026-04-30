@@ -160,8 +160,8 @@ jobs:
             echo ""
             echo "Users can now reference this action using:"
             echo '```yaml'
-            echo "- uses: useblacksmith/stickydisk@$MAJOR_VERSION"
-            echo "- uses: useblacksmith/stickydisk@$VERSION"
+            echo "- uses: $REPOSITORY@$MAJOR_VERSION"
+            echo "- uses: $REPOSITORY@$VERSION"
             echo '```'
             echo ""
             echo "[View Release](https://github.com/$REPOSITORY/releases/tag/$VERSION)"
