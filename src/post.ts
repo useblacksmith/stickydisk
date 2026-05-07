@@ -189,9 +189,16 @@ async function run(): Promise<void> {
   const stickyDiskPath = getState("STICKYDISK_PATH");
   const exposeId = getState("STICKYDISK_EXPOSE_ID");
   const stickyDiskKey = getState("STICKYDISK_KEY");
+  const shouldCommit = getState("STICKYDISK_COMMIT") !== "false";
 
   if (!stickyDiskPath) {
     core.debug("No STICKYDISK_PATH in state, skipping unmount");
+    return;
+  }
+
+  if (!shouldCommit) {
+    core.info("Commit disabled (commit: false), cleaning up without committing");
+    await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey);
     return;
   }
 
