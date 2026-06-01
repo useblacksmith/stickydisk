@@ -45,7 +45,9 @@ async function getStickyDisk(
   };
 }
 
-async function maybeFormatBlockDevice(device: string): Promise<string> {
+async function maybeFormatBlockDevice(
+  device: string,
+): Promise<{ device: string; wasFormatted: boolean }> {
   try {
     // Check if device is formatted with ext4
     try {
@@ -67,7 +69,7 @@ async function maybeFormatBlockDevice(device: string): Promise<string> {
             );
           }
         }
-        return device;
+        return { device, wasFormatted: false };
       }
     } catch {
       // blkid returns non-zero if no filesystem found, which is fine
@@ -107,7 +109,7 @@ async function maybeFormatBlockDevice(device: string): Promise<string> {
       // Non-fatal - continue even if cleanup fails
     }
 
-    return device;
+    return { device, wasFormatted: true };
   } catch (error) {
     if (error instanceof Error) {
       core.warning(`Failed to format device ${device}: ${error}`);
@@ -121,7 +123,7 @@ async function mountStickyDisk(
   stickyDiskPath: string,
   signal: AbortSignal,
   controller: AbortController,
-): Promise<{ device: string; exposeId: string }> {
+): Promise<{ device: string; exposeId: string; wasFormatted: boolean }> {
   const timeoutId = setTimeout(() => controller.abort(), stickyDiskTimeoutMs);
   let stickyDiskResponse: { expose_id: string; device: string };
   try {
@@ -131,7 +133,7 @@ async function mountStickyDisk(
   }
   const device = stickyDiskResponse.device;
   const exposeId = stickyDiskResponse.expose_id;
-  await maybeFormatBlockDevice(device);
+  const { wasFormatted } = await maybeFormatBlockDevice(device);
   const parentPath = path.dirname(stickyDiskPath);
   try {
     await execAsync(`mkdir -p ${shellQuote(parentPath)}`);
@@ -166,7 +168,7 @@ async function mountStickyDisk(
   core.debug(
     `${device} has been mounted to ${stickyDiskPath} with expose ID ${exposeId}`,
   );
-  return { device, exposeId };
+  return { device, exposeId, wasFormatted };
 }
 
 async function getInitialDiskUsage(
@@ -192,6 +194,7 @@ async function run(): Promise<void> {
   let stickyDiskError: Error | undefined;
   let exposeId: string | undefined;
   let device = "";
+  let wasFormatted = false;
   const stickyDiskKey = getInput("key");
   const stickyDiskPath = normalizeMountPath(getInput("path"));
   const commitMode = getInput("commit") || "true";
@@ -209,14 +212,17 @@ async function run(): Promise<void> {
     const controller = new AbortController();
 
     try {
-      ({ device, exposeId } = await mountStickyDisk(
+      ({ device, exposeId, wasFormatted } = await mountStickyDisk(
         stickyDiskKey,
         stickyDiskPath,
         controller.signal,
         controller,
       ));
       saveState("STICKYDISK_EXPOSE_ID", exposeId);
-      core.debug(`Sticky disk mounted to ${device}, expose ID: ${exposeId}`);
+      saveState("STICKYDISK_WAS_FORMATTED", wasFormatted ? "true" : "false");
+      core.debug(
+        `Sticky disk mounted to ${device}, expose ID: ${exposeId}, freshly formatted: ${wasFormatted}`,
+      );
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") {
         core.warning("Request to get sticky disk timed out");

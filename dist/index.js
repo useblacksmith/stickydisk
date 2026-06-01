@@ -36391,7 +36391,7 @@ async function maybeFormatBlockDevice(device) {
                         core.warning(`Error resizing ext4 filesystem on ${device}: ${error}`);
                     }
                 }
-                return device;
+                return { device, wasFormatted: false };
             }
         }
         catch {
@@ -36426,7 +36426,7 @@ async function maybeFormatBlockDevice(device) {
             core.warning(`Failed to remove lost+found directory: ${error instanceof Error ? error.message : String(error)}`);
             // Non-fatal - continue even if cleanup fails
         }
-        return device;
+        return { device, wasFormatted: true };
     }
     catch (error) {
         if (error instanceof Error) {
@@ -36446,7 +36446,7 @@ async function mountStickyDisk(stickyDiskKey, stickyDiskPath, signal, controller
     }
     const device = stickyDiskResponse.device;
     const exposeId = stickyDiskResponse.expose_id;
-    await maybeFormatBlockDevice(device);
+    const { wasFormatted } = await maybeFormatBlockDevice(device);
     const parentPath = external_path_.dirname(stickyDiskPath);
     try {
         await execAsync(`mkdir -p ${shellQuote(parentPath)}`);
@@ -36469,7 +36469,7 @@ async function mountStickyDisk(stickyDiskKey, stickyDiskPath, signal, controller
     // This is important because the mount operation might change ownership
     await execAsync(`sudo chown $(id -u):$(id -g) ${shellQuote(stickyDiskPath)}`);
     core.debug(`${device} has been mounted to ${stickyDiskPath} with expose ID ${exposeId}`);
-    return { device, exposeId };
+    return { device, exposeId, wasFormatted };
 }
 async function getInitialDiskUsage(stickyDiskPath) {
     try {
@@ -36488,6 +36488,7 @@ async function run() {
     let stickyDiskError;
     let exposeId;
     let device = "";
+    let wasFormatted = false;
     const stickyDiskKey = (0,core.getInput)("key");
     const stickyDiskPath = normalizeMountPath((0,core.getInput)("path"));
     const commitMode = (0,core.getInput)("commit") || "true";
@@ -36499,9 +36500,10 @@ async function run() {
     try {
         const controller = new AbortController();
         try {
-            ({ device, exposeId } = await mountStickyDisk(stickyDiskKey, stickyDiskPath, controller.signal, controller));
+            ({ device, exposeId, wasFormatted } = await mountStickyDisk(stickyDiskKey, stickyDiskPath, controller.signal, controller));
             (0,core.saveState)("STICKYDISK_EXPOSE_ID", exposeId);
-            core.debug(`Sticky disk mounted to ${device}, expose ID: ${exposeId}`);
+            (0,core.saveState)("STICKYDISK_WAS_FORMATTED", wasFormatted ? "true" : "false");
+            core.debug(`Sticky disk mounted to ${device}, expose ID: ${exposeId}, freshly formatted: ${wasFormatted}`);
         }
         catch (error) {
             if (error instanceof Error && error.name === "AbortError") {

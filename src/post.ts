@@ -236,6 +236,7 @@ async function run(): Promise<void> {
   const stickyDiskKey = getState("STICKYDISK_KEY");
   const commitMode = getState("STICKYDISK_COMMIT_MODE") || "true";
   const initialUsageBytesStr = getState("STICKYDISK_INITIAL_USAGE_BYTES");
+  const wasFormatted = getState("STICKYDISK_WAS_FORMATTED");
 
   if (!stickyDiskPath) {
     core.debug("No STICKYDISK_PATH in state, skipping unmount");
@@ -326,6 +327,14 @@ async function run(): Promise<void> {
     if (commitMode === "false") {
       core.info(
         "Commit mode is 'false', skipping sticky disk commit (read-only consumer)",
+      );
+      await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey);
+      return;
+    }
+
+    if (commitMode === "if-missing" && wasFormatted !== "true") {
+      core.info(
+        "Commit mode is 'if-missing' and a snapshot already existed at mount time (disk was not freshly formatted). Skipping commit.",
       );
       await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey);
       return;
