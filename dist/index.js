@@ -36471,16 +36471,31 @@ async function mountStickyDisk(stickyDiskKey, stickyDiskPath, signal, controller
     core.debug(`${device} has been mounted to ${stickyDiskPath} with expose ID ${exposeId}`);
     return { device, exposeId };
 }
+async function getInitialDiskUsage(stickyDiskPath) {
+    try {
+        const { stdout } = await execAsync(`df -B1 --output=used ${shellQuote(stickyDiskPath)} | tail -n1`);
+        const value = stdout.trim();
+        if (value && !isNaN(parseInt(value, 10))) {
+            return value;
+        }
+    }
+    catch (error) {
+        core.debug(`Could not get initial disk usage: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    return null;
+}
 async function run() {
     let stickyDiskError;
     let exposeId;
     let device = "";
     const stickyDiskKey = (0,core.getInput)("key");
     const stickyDiskPath = normalizeMountPath((0,core.getInput)("path"));
+    const commitMode = (0,core.getInput)("commit") || "true";
     // Save these values to GitHub Actions state
     (0,core.saveState)("STICKYDISK_PATH", stickyDiskPath);
     (0,core.saveState)("STICKYDISK_KEY", stickyDiskKey);
-    core.info(`Mounting sticky disk at ${stickyDiskPath} with key ${stickyDiskKey}`);
+    (0,core.saveState)("STICKYDISK_COMMIT_MODE", commitMode);
+    core.info(`Mounting sticky disk at ${stickyDiskPath} with key ${stickyDiskKey} (commit: ${commitMode})`);
     try {
         const controller = new AbortController();
         try {
@@ -36503,6 +36518,14 @@ async function run() {
     }
     if (stickyDiskError) {
         core.warning(`Error getting sticky disk: ${stickyDiskError}`);
+    }
+    // Record initial disk usage after mount for on-change detection
+    if (!stickyDiskError && commitMode === "on-change") {
+        const initialUsage = await getInitialDiskUsage(stickyDiskPath);
+        if (initialUsage) {
+            (0,core.saveState)("STICKYDISK_INITIAL_USAGE_BYTES", initialUsage);
+            core.debug(`Recorded initial disk usage: ${initialUsage} bytes`);
+        }
     }
 }
 run();

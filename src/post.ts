@@ -185,10 +185,57 @@ async function flushBlockDevice(devicePath: string): Promise<void> {
   }
 }
 
+function shouldCommitOnChange(
+  fsDiskUsageBytes: number | null,
+  initialUsageBytesStr: string,
+): boolean {
+  if (!initialUsageBytesStr) {
+    core.info(
+      "No initial usage recorded, committing to be safe (on-change mode)",
+    );
+    return true;
+  }
+
+  const initialUsageBytes = parseInt(initialUsageBytesStr, 10);
+  if (isNaN(initialUsageBytes)) {
+    core.info(
+      "Invalid initial usage value, committing to be safe (on-change mode)",
+    );
+    return true;
+  }
+
+  if (fsDiskUsageBytes === null) {
+    core.info(
+      "Could not determine current usage, committing to be safe (on-change mode)",
+    );
+    return true;
+  }
+
+  const delta = Math.abs(fsDiskUsageBytes - initialUsageBytes);
+  // ext4 metadata operations (journal updates, inode table writes) can cause
+  // small usage fluctuations even without user-visible file changes. Use a 4KB
+  // threshold (one filesystem block) to avoid false positives.
+  const thresholdBytes = 4096;
+
+  if (delta <= thresholdBytes) {
+    core.info(
+      `Filesystem unchanged (initial: ${initialUsageBytes} bytes, current: ${fsDiskUsageBytes} bytes, delta: ${delta} bytes <= ${thresholdBytes} byte threshold). Skipping commit (on-change mode).`,
+    );
+    return false;
+  }
+
+  core.info(
+    `Filesystem changed (initial: ${initialUsageBytes} bytes, current: ${fsDiskUsageBytes} bytes, delta: ${delta} bytes). Committing (on-change mode).`,
+  );
+  return true;
+}
+
 async function run(): Promise<void> {
   const stickyDiskPath = getState("STICKYDISK_PATH");
   const exposeId = getState("STICKYDISK_EXPOSE_ID");
   const stickyDiskKey = getState("STICKYDISK_KEY");
+  const commitMode = getState("STICKYDISK_COMMIT_MODE") || "true";
+  const initialUsageBytesStr = getState("STICKYDISK_INITIAL_USAGE_BYTES");
 
   if (!stickyDiskPath) {
     core.debug("No STICKYDISK_PATH in state, skipping unmount");
@@ -273,6 +320,23 @@ async function run(): Promise<void> {
       core.info(
         "Skipping durability flush: device path not found for mount point",
       );
+    }
+
+    // Determine whether to commit based on commit mode
+    if (commitMode === "false") {
+      core.info(
+        "Commit mode is 'false', skipping sticky disk commit (read-only consumer)",
+      );
+      await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey);
+      return;
+    }
+
+    if (
+      commitMode === "on-change" &&
+      !shouldCommitOnChange(fsDiskUsageBytes, initialUsageBytesStr)
+    ) {
+      await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey);
+      return;
     }
 
     const stickyDiskError = getState("STICKYDISK_ERROR") === "true";

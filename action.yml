@@ -11,6 +11,10 @@ inputs:
   path:
     description: "The path at which to mount the sticky disk"
     required: true
+  commit:
+    description: "Controls whether the disk is committed (snapshotted) after the job. 'true' always commits (default), 'false' never commits (read-only consumers), 'on-change' only commits if filesystem content changed since mount."
+    required: false
+    default: "true"
 runs:
   using: "node24"
   main: "dist/index.js"

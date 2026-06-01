@@ -169,19 +169,40 @@ async function mountStickyDisk(
   return { device, exposeId };
 }
 
+async function getInitialDiskUsage(
+  stickyDiskPath: string,
+): Promise<string | null> {
+  try {
+    const { stdout } = await execAsync(
+      `df -B1 --output=used ${shellQuote(stickyDiskPath)} | tail -n1`,
+    );
+    const value = stdout.trim();
+    if (value && !isNaN(parseInt(value, 10))) {
+      return value;
+    }
+  } catch (error) {
+    core.debug(
+      `Could not get initial disk usage: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  return null;
+}
+
 async function run(): Promise<void> {
   let stickyDiskError: Error | undefined;
   let exposeId: string | undefined;
   let device = "";
   const stickyDiskKey = getInput("key");
   const stickyDiskPath = normalizeMountPath(getInput("path"));
+  const commitMode = getInput("commit") || "true";
 
   // Save these values to GitHub Actions state
   saveState("STICKYDISK_PATH", stickyDiskPath);
   saveState("STICKYDISK_KEY", stickyDiskKey);
+  saveState("STICKYDISK_COMMIT_MODE", commitMode);
 
   core.info(
-    `Mounting sticky disk at ${stickyDiskPath} with key ${stickyDiskKey}`,
+    `Mounting sticky disk at ${stickyDiskPath} with key ${stickyDiskKey} (commit: ${commitMode})`,
   );
 
   try {
@@ -211,6 +232,15 @@ async function run(): Promise<void> {
 
   if (stickyDiskError) {
     core.warning(`Error getting sticky disk: ${stickyDiskError}`);
+  }
+
+  // Record initial disk usage after mount for on-change detection
+  if (!stickyDiskError && commitMode === "on-change") {
+    const initialUsage = await getInitialDiskUsage(stickyDiskPath);
+    if (initialUsage) {
+      saveState("STICKYDISK_INITIAL_USAGE_BYTES", initialUsage);
+      core.debug(`Recorded initial disk usage: ${initialUsage} bytes`);
+    }
   }
 }
 
