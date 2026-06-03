@@ -36391,7 +36391,7 @@ async function maybeFormatBlockDevice(device) {
                         core.warning(`Error resizing ext4 filesystem on ${device}: ${error}`);
                     }
                 }
-                return device;
+                return { device, wasFormatted: false };
             }
         }
         catch {
@@ -36426,7 +36426,7 @@ async function maybeFormatBlockDevice(device) {
             core.warning(`Failed to remove lost+found directory: ${error instanceof Error ? error.message : String(error)}`);
             // Non-fatal - continue even if cleanup fails
         }
-        return device;
+        return { device, wasFormatted: true };
     }
     catch (error) {
         if (error instanceof Error) {
@@ -36446,7 +36446,7 @@ async function mountStickyDisk(stickyDiskKey, stickyDiskPath, signal, controller
     }
     const device = stickyDiskResponse.device;
     const exposeId = stickyDiskResponse.expose_id;
-    await maybeFormatBlockDevice(device);
+    const { wasFormatted } = await maybeFormatBlockDevice(device);
     const parentPath = external_path_.dirname(stickyDiskPath);
     try {
         await execAsync(`mkdir -p ${shellQuote(parentPath)}`);
@@ -36469,24 +36469,41 @@ async function mountStickyDisk(stickyDiskKey, stickyDiskPath, signal, controller
     // This is important because the mount operation might change ownership
     await execAsync(`sudo chown $(id -u):$(id -g) ${shellQuote(stickyDiskPath)}`);
     core.debug(`${device} has been mounted to ${stickyDiskPath} with expose ID ${exposeId}`);
-    return { device, exposeId };
+    return { device, exposeId, wasFormatted };
+}
+async function getInitialDiskUsage(stickyDiskPath) {
+    try {
+        const { stdout } = await execAsync(`df -B1 --output=used ${shellQuote(stickyDiskPath)} | tail -n1`);
+        const value = stdout.trim();
+        if (value && !isNaN(parseInt(value, 10))) {
+            return value;
+        }
+    }
+    catch (error) {
+        core.debug(`Could not get initial disk usage: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    return null;
 }
 async function run() {
     let stickyDiskError;
     let exposeId;
     let device = "";
+    let wasFormatted = false;
     const stickyDiskKey = (0,core.getInput)("key");
     const stickyDiskPath = normalizeMountPath((0,core.getInput)("path"));
+    const commitMode = (0,core.getInput)("commit") || "true";
     // Save these values to GitHub Actions state
     (0,core.saveState)("STICKYDISK_PATH", stickyDiskPath);
     (0,core.saveState)("STICKYDISK_KEY", stickyDiskKey);
-    core.info(`Mounting sticky disk at ${stickyDiskPath} with key ${stickyDiskKey}`);
+    (0,core.saveState)("STICKYDISK_COMMIT_MODE", commitMode);
+    core.info(`Mounting sticky disk at ${stickyDiskPath} with key ${stickyDiskKey} (commit: ${commitMode})`);
     try {
         const controller = new AbortController();
         try {
-            ({ device, exposeId } = await mountStickyDisk(stickyDiskKey, stickyDiskPath, controller.signal, controller));
+            ({ device, exposeId, wasFormatted } = await mountStickyDisk(stickyDiskKey, stickyDiskPath, controller.signal, controller));
             (0,core.saveState)("STICKYDISK_EXPOSE_ID", exposeId);
-            core.debug(`Sticky disk mounted to ${device}, expose ID: ${exposeId}`);
+            (0,core.saveState)("STICKYDISK_WAS_FORMATTED", wasFormatted ? "true" : "false");
+            core.debug(`Sticky disk mounted to ${device}, expose ID: ${exposeId}, freshly formatted: ${wasFormatted}`);
         }
         catch (error) {
             if (error instanceof Error && error.name === "AbortError") {
@@ -36503,6 +36520,14 @@ async function run() {
     }
     if (stickyDiskError) {
         core.warning(`Error getting sticky disk: ${stickyDiskError}`);
+    }
+    // Record initial disk usage after mount for on-change detection
+    if (!stickyDiskError && commitMode === "on-change") {
+        const initialUsage = await getInitialDiskUsage(stickyDiskPath);
+        if (initialUsage) {
+            (0,core.saveState)("STICKYDISK_INITIAL_USAGE_BYTES", initialUsage);
+            core.debug(`Recorded initial disk usage: ${initialUsage} bytes`);
+        }
     }
 }
 run();
