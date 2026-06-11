@@ -245,7 +245,8 @@ async function run(): Promise<void> {
       await execAsync(
         `sudo chown $(id -u):$(id -g) ${shellQuote(stickyDiskPath)}`,
       );
-      const workspaceParentPath = getWorkspaceLocalParentToChown(stickyDiskPath);
+      const workspaceParentPath =
+        getWorkspaceLocalParentToChown(stickyDiskPath);
       if (workspaceParentPath) {
         await execAsync(
           `sudo chown $(id -u):$(id -g) ${shellQuote(workspaceParentPath)}`,
