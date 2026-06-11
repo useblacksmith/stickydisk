@@ -36520,6 +36520,20 @@ async function run() {
     }
     if (stickyDiskError) {
         core.warning(`Error getting sticky disk: ${stickyDiskError}`);
+        // Create the directory anyway so subsequent steps don't fail on a missing path.
+        // The job continues with a cold (empty) cache instead of crashing.
+        try {
+            await execAsync(`sudo mkdir -p ${shellQuote(stickyDiskPath)}`);
+            await execAsync(`sudo chown $(id -u):$(id -g) ${shellQuote(stickyDiskPath)}`);
+            const workspaceParentPath = getWorkspaceLocalParentToChown(stickyDiskPath);
+            if (workspaceParentPath) {
+                await execAsync(`sudo chown $(id -u):$(id -g) ${shellQuote(workspaceParentPath)}`);
+            }
+            core.info(`Created empty directory at ${stickyDiskPath} as fallback (job will continue without cache)`);
+        }
+        catch (mkdirError) {
+            core.debug(`Could not create fallback directory: ${mkdirError instanceof Error ? mkdirError.message : String(mkdirError)}`);
+        }
     }
     // Record initial disk usage after mount for on-change detection
     if (!stickyDiskError && commitMode === "on-change") {
