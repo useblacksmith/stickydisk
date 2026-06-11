@@ -245,6 +245,12 @@ async function run(): Promise<void> {
       await execAsync(
         `sudo chown $(id -u):$(id -g) ${shellQuote(stickyDiskPath)}`,
       );
+      const workspaceParentPath = getWorkspaceLocalParentToChown(stickyDiskPath);
+      if (workspaceParentPath) {
+        await execAsync(
+          `sudo chown $(id -u):$(id -g) ${shellQuote(workspaceParentPath)}`,
+        );
+      }
       core.info(
         `Created empty directory at ${stickyDiskPath} as fallback (job will continue without cache)`,
       );
