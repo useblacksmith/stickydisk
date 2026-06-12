@@ -36471,6 +36471,23 @@ async function mountStickyDisk(stickyDiskKey, stickyDiskPath, signal, controller
     core.debug(`${device} has been mounted to ${stickyDiskPath} with expose ID ${exposeId}`);
     return { device, exposeId, wasFormatted };
 }
+async function ensureFallbackDirectory(stickyDiskPath) {
+    try {
+        // Create the directory with sudo (supports system directories like /nix, /mnt, etc.)
+        // and chown it to the runner user, mirroring what a successful mount would produce.
+        // mkdir -p and a non-recursive chown leave any existing contents untouched.
+        await execAsync(`sudo mkdir -p ${shellQuote(stickyDiskPath)}`);
+        await execAsync(`sudo chown $(id -u):$(id -g) ${shellQuote(stickyDiskPath)}`);
+        const workspaceParentPath = getWorkspaceLocalParentToChown(stickyDiskPath);
+        if (workspaceParentPath) {
+            await execAsync(`sudo chown $(id -u):$(id -g) ${shellQuote(workspaceParentPath)}`);
+        }
+        core.info(`Sticky disk mount failed; created empty directory at ${stickyDiskPath} so subsequent steps see a cache miss instead of a missing path`);
+    }
+    catch (error) {
+        core.warning(`Failed to create fallback directory at ${stickyDiskPath}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+}
 async function getInitialDiskUsage(stickyDiskPath) {
     try {
         const { stdout } = await execAsync(`df -B1 --output=used ${shellQuote(stickyDiskPath)} | tail -n1`);
@@ -36520,6 +36537,10 @@ async function run() {
     }
     if (stickyDiskError) {
         core.warning(`Error getting sticky disk: ${stickyDiskError}`);
+        // Degrade gracefully: make sure the requested path exists as an empty,
+        // writable directory so downstream steps behave as if this were a fresh
+        // sticky disk (a cache miss) rather than failing on a missing path.
+        await ensureFallbackDirectory(stickyDiskPath);
     }
     // Record initial disk usage after mount for on-change detection
     if (!stickyDiskError && commitMode === "on-change") {
