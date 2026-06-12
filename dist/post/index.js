@@ -36630,17 +36630,26 @@ async function run() {
     const commitMode = (0,core.getState)("STICKYDISK_COMMIT_MODE") || "true";
     const initialUsageBytesStr = (0,core.getState)("STICKYDISK_INITIAL_USAGE_BYTES");
     const wasFormatted = (0,core.getState)("STICKYDISK_WAS_FORMATTED");
+    const stickyDiskError = (0,core.getState)("STICKYDISK_ERROR") === "true";
     if (!stickyDiskPath) {
         core.debug("No STICKYDISK_PATH in state, skipping unmount");
         return;
     }
+    const logNotMounted = () => {
+        if (stickyDiskError) {
+            core.info(`Skipping unmount and commit for ${stickyDiskPath}: the sticky disk mount failed during setup, so there is nothing to unmount and committing could clobber existing cached data`);
+        }
+        else {
+            core.debug(`${stickyDiskPath} is not mounted, skipping unmount`);
+        }
+    };
     try {
         // Check if path is mounted and get the device name for later flush
         let devicePath = null;
         try {
             const { stdout: mountOutput } = await execAsync(`mount | grep "${stickyDiskPath}"`);
             if (!mountOutput) {
-                core.debug(`${stickyDiskPath} is not mounted, skipping unmount`);
+                logNotMounted();
                 return;
             }
             devicePath = await getDeviceFromMount(stickyDiskPath);
@@ -36650,7 +36659,7 @@ async function run() {
         }
         catch {
             // grep returns non-zero if no match found
-            core.debug(`${stickyDiskPath} is not mounted, skipping unmount`);
+            logNotMounted();
             return;
         }
         // Ensure all pending writes are flushed to disk before collecting usage.
@@ -36714,7 +36723,6 @@ async function run() {
             await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey);
             return;
         }
-        const stickyDiskError = (0,core.getState)("STICKYDISK_ERROR") === "true";
         // Check for previous step failures before committing
         if (!stickyDiskError) {
             core.info("Checking for previous step failures before committing sticky disk");

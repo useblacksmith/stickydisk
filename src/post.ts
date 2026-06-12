@@ -237,11 +237,22 @@ async function run(): Promise<void> {
   const commitMode = getState("STICKYDISK_COMMIT_MODE") || "true";
   const initialUsageBytesStr = getState("STICKYDISK_INITIAL_USAGE_BYTES");
   const wasFormatted = getState("STICKYDISK_WAS_FORMATTED");
+  const stickyDiskError = getState("STICKYDISK_ERROR") === "true";
 
   if (!stickyDiskPath) {
     core.debug("No STICKYDISK_PATH in state, skipping unmount");
     return;
   }
+
+  const logNotMounted = (): void => {
+    if (stickyDiskError) {
+      core.info(
+        `Skipping unmount and commit for ${stickyDiskPath}: the sticky disk mount failed during setup, so there is nothing to unmount and committing could clobber existing cached data`,
+      );
+    } else {
+      core.debug(`${stickyDiskPath} is not mounted, skipping unmount`);
+    }
+  };
 
   try {
     // Check if path is mounted and get the device name for later flush
@@ -251,7 +262,7 @@ async function run(): Promise<void> {
         `mount | grep "${stickyDiskPath}"`,
       );
       if (!mountOutput) {
-        core.debug(`${stickyDiskPath} is not mounted, skipping unmount`);
+        logNotMounted();
         return;
       }
       devicePath = await getDeviceFromMount(stickyDiskPath);
@@ -262,7 +273,7 @@ async function run(): Promise<void> {
       }
     } catch {
       // grep returns non-zero if no match found
-      core.debug(`${stickyDiskPath} is not mounted, skipping unmount`);
+      logNotMounted();
       return;
     }
 
@@ -347,8 +358,6 @@ async function run(): Promise<void> {
       await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey);
       return;
     }
-
-    const stickyDiskError = getState("STICKYDISK_ERROR") === "true";
 
     // Check for previous step failures before committing
     if (!stickyDiskError) {
