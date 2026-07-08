@@ -118,6 +118,32 @@ async function maybeFormatBlockDevice(
   }
 }
 
+// Creates the mount point directory, keeping it (and any workspace-local
+// parent) owned by the runner user. Parents are created without sudo first so
+// that intermediate directories under $HOME (e.g. ~/.cache) stay writable by
+// the runner; sudo is only needed for system directories like /nix or /mnt.
+async function createMountPoint(stickyDiskPath: string): Promise<void> {
+  const parentPath = path.dirname(stickyDiskPath);
+  try {
+    await execAsync(`mkdir -p ${shellQuote(parentPath)}`);
+  } catch (error) {
+    core.debug(
+      `Could not create mount parent ${parentPath} as current user: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
+  await execAsync(`sudo mkdir -p ${shellQuote(stickyDiskPath)}`);
+  await execAsync(`sudo chown $(id -u):$(id -g) ${shellQuote(stickyDiskPath)}`);
+
+  const workspaceParentPath = getWorkspaceLocalParentToChown(stickyDiskPath);
+  if (workspaceParentPath) {
+    // Nested workspace mounts such as .nx/cache need a writable parent so tools can recreate them.
+    await execAsync(
+      `sudo chown $(id -u):$(id -g) ${shellQuote(workspaceParentPath)}`,
+    );
+  }
+}
+
 async function mountStickyDisk(
   stickyDiskKey: string,
   stickyDiskPath: string,
@@ -134,27 +160,8 @@ async function mountStickyDisk(
   const device = stickyDiskResponse.device;
   const exposeId = stickyDiskResponse.expose_id;
   const { wasFormatted } = await maybeFormatBlockDevice(device);
-  const parentPath = path.dirname(stickyDiskPath);
-  try {
-    await execAsync(`mkdir -p ${shellQuote(parentPath)}`);
-  } catch (error) {
-    core.debug(
-      `Could not create mount parent ${parentPath} as current user: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
 
-  // Create mount point with sudo (supports system directories like /nix, /mnt, etc.)
-  // Then change ownership to runner user so it's accessible
-  await execAsync(`sudo mkdir -p ${shellQuote(stickyDiskPath)}`);
-  await execAsync(`sudo chown $(id -u):$(id -g) ${shellQuote(stickyDiskPath)}`);
-
-  const workspaceParentPath = getWorkspaceLocalParentToChown(stickyDiskPath);
-  if (workspaceParentPath) {
-    // Nested workspace mounts such as .nx/cache need a writable parent so tools can recreate them.
-    await execAsync(
-      `sudo chown $(id -u):$(id -g) ${shellQuote(workspaceParentPath)}`,
-    );
-  }
+  await createMountPoint(stickyDiskPath);
 
   // Mount the device with default options
   await execAsync(
@@ -173,20 +180,10 @@ async function mountStickyDisk(
 
 async function ensureFallbackDirectory(stickyDiskPath: string): Promise<void> {
   try {
-    // Create the directory with sudo (supports system directories like /nix, /mnt, etc.)
-    // and chown it to the runner user, mirroring what a successful mount would produce.
-    // mkdir -p and a non-recursive chown leave any existing contents untouched.
-    await execAsync(`sudo mkdir -p ${shellQuote(stickyDiskPath)}`);
-    await execAsync(
-      `sudo chown $(id -u):$(id -g) ${shellQuote(stickyDiskPath)}`,
-    );
-
-    const workspaceParentPath = getWorkspaceLocalParentToChown(stickyDiskPath);
-    if (workspaceParentPath) {
-      await execAsync(
-        `sudo chown $(id -u):$(id -g) ${shellQuote(workspaceParentPath)}`,
-      );
-    }
+    // Create the directory owned by the runner user, mirroring what a
+    // successful mount would produce. mkdir -p and a non-recursive chown leave
+    // any existing contents untouched.
+    await createMountPoint(stickyDiskPath);
 
     core.info(
       `Sticky disk mount failed; created empty directory at ${stickyDiskPath} so subsequent steps see a cache miss instead of a missing path`,
