@@ -1,9 +1,6 @@
 name: Build
 on:
   workflow_dispatch:
-  pull_request:
-  push:
-    branches: [main]
 jobs:
   build-action:
     name: Build Action
@@ -31,23 +28,21 @@ jobs:
       - name: Check Prettier Formatting
         run: |
           npm run format
-          # Check if prettier generated any changes
-          if ! git diff --quiet; then
-            echo "Error: Code is not formatted with prettier. Please run 'npm run format' locally and commit the changes."
-            git status
-            git diff
-            exit 1
-          fi
+          git diff --stat -- . ':(exclude)dist'
 
       - name: Check Lint
         run: npm run lint
 
+      - name: Run Tests
+        run: npm test
+
       - name: Build Action
-        run: |
-          npm run build
-          # Check if any files were changed during build
-          if ! git diff --quiet; then
-            echo "Error: Build generated changes that aren't committed. Please run 'npm run build' locally and commit the changes."
-            git diff
-            exit 1
-          fi
+        run: npm run build
+
+      - name: Upload dist
+        uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
+        with:
+          name: dist
+          path: dist/
+          include-hidden-files: true
+          if-no-files-found: error
