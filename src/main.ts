@@ -2,6 +2,7 @@ import { getInput, saveState } from "@actions/core";
 import * as core from "@actions/core";
 import { promisify } from "util";
 import { exec } from "child_process";
+import * as fs from "fs";
 import * as path from "path";
 import { createStickyDiskClient } from "./utils";
 import {
@@ -252,6 +253,22 @@ async function run(): Promise<void> {
   const stickyDiskKey = getInput("key");
   const stickyDiskPath = normalizeMountPath(getInput("path"));
   const commitMode = getInput("commit") || "true";
+
+  if (process.platform === "win32") {
+    core.warning(
+      `Sticky disks are not supported on Windows runners; skipping mount at ${stickyDiskPath}. ` +
+        "Subsequent steps will see an empty directory (a cache miss). " +
+        "Remove this step from Windows jobs to silence this warning.",
+    );
+    try {
+      await fs.promises.mkdir(stickyDiskPath, { recursive: true });
+    } catch (error) {
+      core.warning(
+        `Failed to create fallback directory at ${stickyDiskPath}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    return;
+  }
 
   // Save these values to GitHub Actions state
   saveState("STICKYDISK_PATH", stickyDiskPath);

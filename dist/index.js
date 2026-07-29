@@ -27416,6 +27416,8 @@ var core = __nccwpck_require__(7484);
 var external_util_ = __nccwpck_require__(9023);
 // EXTERNAL MODULE: external "child_process"
 var external_child_process_ = __nccwpck_require__(5317);
+// EXTERNAL MODULE: external "fs"
+var external_fs_ = __nccwpck_require__(9896);
 // EXTERNAL MODULE: external "path"
 var external_path_ = __nccwpck_require__(6928);
 ;// CONCATENATED MODULE: ./node_modules/@bufbuild/protobuf/dist/esm/service-type.js
@@ -36348,6 +36350,7 @@ function getWorkspaceLocalParentToChown(mountPath, cwd = process.cwd()) {
 
 
 
+
 const execAsync = (0,external_util_.promisify)(external_child_process_.exec);
 // stickyDiskTimeoutMs states the max amount of time this action will wait for the VM agent to
 // expose the sticky disk from the storage agent, map it onto the host and then patch the drive
@@ -36534,6 +36537,18 @@ async function run() {
     const stickyDiskKey = (0,core.getInput)("key");
     const stickyDiskPath = normalizeMountPath((0,core.getInput)("path"));
     const commitMode = (0,core.getInput)("commit") || "true";
+    if (process.platform === "win32") {
+        core.warning(`Sticky disks are not supported on Windows runners; skipping mount at ${stickyDiskPath}. ` +
+            "Subsequent steps will see an empty directory (a cache miss). " +
+            "Remove this step from Windows jobs to silence this warning.");
+        try {
+            await external_fs_.promises.mkdir(stickyDiskPath, { recursive: true });
+        }
+        catch (error) {
+            core.warning(`Failed to create fallback directory at ${stickyDiskPath}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+        return;
+    }
     // Save these values to GitHub Actions state
     (0,core.saveState)("STICKYDISK_PATH", stickyDiskPath);
     (0,core.saveState)("STICKYDISK_KEY", stickyDiskKey);
