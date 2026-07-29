@@ -36537,10 +36537,11 @@ async function run() {
     const stickyDiskKey = (0,core.getInput)("key");
     const stickyDiskPath = normalizeMountPath((0,core.getInput)("path"));
     const commitMode = (0,core.getInput)("commit") || "true";
-    if (process.platform === "win32") {
-        core.warning(`Sticky disks are not supported on Windows runners; skipping mount at ${stickyDiskPath}. ` +
+    if (process.platform === "win32" || process.platform === "darwin") {
+        const platformName = process.platform === "win32" ? "Windows" : "macOS";
+        core.warning(`Sticky disks are not supported on ${platformName} runners; skipping mount at ${stickyDiskPath}. ` +
             "Subsequent steps will see an empty directory (a cache miss). " +
-            "Remove this step from Windows jobs to silence this warning.");
+            `Remove this step from ${platformName} jobs to silence this warning.`);
         try {
             await external_fs_.promises.mkdir(stickyDiskPath, { recursive: true });
         }
