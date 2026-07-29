@@ -36440,7 +36440,7 @@ async function maybeFormatBlockDevice(device) {
         const tempMount = `/tmp/stickydisk-init-${Date.now()}`;
         try {
             await execAsync(`sudo mkdir -p ${tempMount}`);
-            await execAsync(`sudo mount ${device} ${tempMount}`);
+            await execAsync(`sudo mount -o noinit_itable ${device} ${tempMount}`);
             await execAsync(`sudo rm -rf ${tempMount}/lost+found`);
             await execAsync(`sudo umount ${tempMount}`);
             await execAsync(`sudo rmdir ${tempMount}`);
@@ -36493,8 +36493,15 @@ async function mountStickyDisk(stickyDiskKey, stickyDiskPath, signal, controller
     await waitForNonZeroDeviceSize(device, 10000);
     const { wasFormatted } = await maybeFormatBlockDevice(device);
     await createMountPoint(stickyDiskPath);
-    // Mount the device with default options
-    await execAsync(`sudo mount ${shellQuote(device)} ${shellQuote(stickyDiskPath)}`);
+    // Mount with noinit_itable to keep the ext4lazyinit kernel thread from
+    // zeroing uninitialized inode tables in the background. Sticky disks are
+    // copy-on-write clones of a committed snapshot: if the snapshot was taken
+    // before lazy init finished, every clone would redo the same multi-GB
+    // zeroing and the writes are thrown away when the clone is discarded. The
+    // zeroing is unnecessary here anyway - mkfs enables checksummed group
+    // descriptors that track unused inodes, and unallocated blocks on the
+    // thin-provisioned device already read back as zeroes.
+    await execAsync(`sudo mount -o noinit_itable ${shellQuote(device)} ${shellQuote(stickyDiskPath)}`);
     // After mounting, ensure the mounted filesystem is owned by runner user
     // This is important because the mount operation might change ownership
     await execAsync(`sudo chown $(id -u):$(id -g) ${shellQuote(stickyDiskPath)}`);
