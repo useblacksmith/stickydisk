@@ -3,7 +3,7 @@ import * as core from "@actions/core";
 import { promisify } from "util";
 import { exec } from "child_process";
 import * as path from "path";
-import { createStickyDiskClient } from "./utils";
+import { createStickyDiskClient, getAgentEndpoint } from "./utils";
 import {
   getWorkspaceLocalParentToChown,
   normalizeMountPath,
@@ -210,13 +210,10 @@ async function mountStickyDisk(
 
 async function ensureFallbackDirectory(stickyDiskPath: string): Promise<void> {
   try {
-    // Create the directory owned by the runner user, mirroring what a
-    // successful mount would produce. mkdir -p and a non-recursive chown leave
-    // any existing contents untouched.
     await createMountPoint(stickyDiskPath);
 
     core.info(
-      `Sticky disk mount failed; created empty directory at ${stickyDiskPath} so subsequent steps see a cache miss instead of a missing path`,
+      `Sticky disk unavailable; created empty directory at ${stickyDiskPath} so subsequent steps see a cache miss instead of a missing path`,
     );
   } catch (error) {
     core.warning(
@@ -257,6 +254,14 @@ async function run(): Promise<void> {
   saveState("STICKYDISK_PATH", stickyDiskPath);
   saveState("STICKYDISK_KEY", stickyDiskKey);
   saveState("STICKYDISK_COMMIT_MODE", commitMode);
+
+  if (!getAgentEndpoint()) {
+    core.warning(
+      `BLACKSMITH_AGENT_ADDR or BLACKSMITH_STICKY_DISK_GRPC_PORT is not set; sticky disks are unavailable on this runner. Creating ${stickyDiskPath} as a plain directory instead (contents will not persist across runs).`,
+    );
+    await ensureFallbackDirectory(stickyDiskPath);
+    return;
+  }
 
   core.info(
     `Mounting sticky disk at ${stickyDiskPath} with key ${stickyDiskKey} (commit: ${commitMode})`,

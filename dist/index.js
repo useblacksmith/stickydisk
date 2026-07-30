@@ -36298,10 +36298,25 @@ const StickyDiskService = {
 
 
 
+function getAgentAddr() {
+    return process.env.BLACKSMITH_AGENT_ADDR || undefined;
+}
+function getAgentEndpoint() {
+    const addr = getAgentAddr();
+    const port = process.env.BLACKSMITH_STICKY_DISK_GRPC_PORT;
+    if (!addr || !port) {
+        return undefined;
+    }
+    return `${addr}:${port}`;
+}
 function createStickyDiskClient() {
-    core.info(`Creating sticky disk client with port ${process.env.BLACKSMITH_STICKY_DISK_GRPC_PORT || "5557"}`);
+    const endpoint = getAgentEndpoint();
+    if (!endpoint) {
+        throw new Error("BLACKSMITH_AGENT_ADDR or BLACKSMITH_STICKY_DISK_GRPC_PORT is not set; cannot dial the Blacksmith agent");
+    }
+    core.info(`Creating sticky disk client for ${endpoint}`);
     const transport = createGrpcTransport({
-        baseUrl: `http://192.168.127.1:${process.env.BLACKSMITH_STICKY_DISK_GRPC_PORT || "5557"}`,
+        baseUrl: `http://${endpoint}`,
         httpVersion: "2",
     });
     return createClient(StickyDiskService, transport);
@@ -36503,11 +36518,8 @@ async function mountStickyDisk(stickyDiskKey, stickyDiskPath, signal, controller
 }
 async function ensureFallbackDirectory(stickyDiskPath) {
     try {
-        // Create the directory owned by the runner user, mirroring what a
-        // successful mount would produce. mkdir -p and a non-recursive chown leave
-        // any existing contents untouched.
         await createMountPoint(stickyDiskPath);
-        core.info(`Sticky disk mount failed; created empty directory at ${stickyDiskPath} so subsequent steps see a cache miss instead of a missing path`);
+        core.info(`Sticky disk unavailable; created empty directory at ${stickyDiskPath} so subsequent steps see a cache miss instead of a missing path`);
     }
     catch (error) {
         core.warning(`Failed to create fallback directory at ${stickyDiskPath}: ${error instanceof Error ? error.message : String(error)}`);
@@ -36538,6 +36550,11 @@ async function run() {
     (0,core.saveState)("STICKYDISK_PATH", stickyDiskPath);
     (0,core.saveState)("STICKYDISK_KEY", stickyDiskKey);
     (0,core.saveState)("STICKYDISK_COMMIT_MODE", commitMode);
+    if (!getAgentEndpoint()) {
+        core.warning(`BLACKSMITH_AGENT_ADDR or BLACKSMITH_STICKY_DISK_GRPC_PORT is not set; sticky disks are unavailable on this runner. Creating ${stickyDiskPath} as a plain directory instead (contents will not persist across runs).`);
+        await ensureFallbackDirectory(stickyDiskPath);
+        return;
+    }
     core.info(`Mounting sticky disk at ${stickyDiskPath} with key ${stickyDiskKey} (commit: ${commitMode})`);
     try {
         const controller = new AbortController();

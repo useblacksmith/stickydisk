@@ -36296,10 +36296,25 @@ const StickyDiskService = {
 
 
 
+function getAgentAddr() {
+    return process.env.BLACKSMITH_AGENT_ADDR || undefined;
+}
+function getAgentEndpoint() {
+    const addr = getAgentAddr();
+    const port = process.env.BLACKSMITH_STICKY_DISK_GRPC_PORT;
+    if (!addr || !port) {
+        return undefined;
+    }
+    return `${addr}:${port}`;
+}
 function createStickyDiskClient() {
-    core.info(`Creating sticky disk client with port ${process.env.BLACKSMITH_STICKY_DISK_GRPC_PORT || "5557"}`);
+    const endpoint = getAgentEndpoint();
+    if (!endpoint) {
+        throw new Error("BLACKSMITH_AGENT_ADDR or BLACKSMITH_STICKY_DISK_GRPC_PORT is not set; cannot dial the Blacksmith agent");
+    }
+    core.info(`Creating sticky disk client for ${endpoint}`);
     const transport = createGrpcTransport({
-        baseUrl: `http://192.168.127.1:${process.env.BLACKSMITH_STICKY_DISK_GRPC_PORT || "5557"}`,
+        baseUrl: `http://${endpoint}`,
         httpVersion: "2",
     });
     return createClient(StickyDiskService, transport);
