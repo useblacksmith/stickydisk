@@ -126,7 +126,7 @@ async function maybeFormatBlockDevice(
     const tempMount = `/tmp/stickydisk-init-${Date.now()}`;
     try {
       await execAsync(`sudo mkdir -p ${tempMount}`);
-      await execAsync(`sudo mount ${device} ${tempMount}`);
+      await execAsync(`sudo mount -o noinit_itable ${device} ${tempMount}`);
       await execAsync(`sudo rm -rf ${tempMount}/lost+found`);
       await execAsync(`sudo umount ${tempMount}`);
       await execAsync(`sudo rmdir ${tempMount}`);
@@ -193,9 +193,10 @@ async function mountStickyDisk(
 
   await createMountPoint(stickyDiskPath);
 
-  // Mount the device with default options
+  // noinit_itable stops the background zeroing of a non-trivial portion of
+  // the device (uninitialized inode tables), which is unnecessary here.
   await execAsync(
-    `sudo mount ${shellQuote(device)} ${shellQuote(stickyDiskPath)}`,
+    `sudo mount -o noinit_itable ${shellQuote(device)} ${shellQuote(stickyDiskPath)}`,
   );
 
   // After mounting, ensure the mounted filesystem is owned by runner user
