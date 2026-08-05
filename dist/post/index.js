@@ -36328,6 +36328,9 @@ var external_path_ = __nccwpck_require__(6928);
 
 
 
+// The runner's TaskResult enum spells it "Canceled", not "Cancelled", so a cancelled step
+// was read as a clean run. Accept either spelling, and any casing.
+const FAILURE_RESULT = /^(?:failed|cancell?ed)$/i;
 /**
  * Checks GitHub Actions runner logs for failed or cancelled steps
  * @param runnerBasePath - Base path to runner directory (default: auto-detect)
@@ -36393,10 +36396,8 @@ async function checkPreviousStepFailures(runnerBasePath) {
         const logContent = await external_fs_.promises.readFile(workerLogPath, "utf-8");
         // Patterns to match failed or cancelled steps
         const failurePatterns = [
-            /"result":\s*"failed"/g,
-            /"result":\s*"cancelled"/g,
-            /Step result:\s*Failed/g,
-            /Step result:\s*Cancelled/g,
+            /"result":\s*"(?:failed|cancell?ed)"/gi,
+            /Step result:\s*(?:failed|cancell?ed)/gi,
         ];
         // Count total failures
         let failedCount = 0;
@@ -36409,7 +36410,7 @@ async function checkPreviousStepFailures(runnerBasePath) {
         // Extract detailed failure information
         const failedSteps = [];
         // Regex to extract JSON objects containing step information
-        const jsonStepPattern = /\{[^{}]*"result":\s*"(?:failed|cancelled)"[^{}]*\}/g;
+        const jsonStepPattern = /\{[^{}]*"result":\s*"(?:failed|cancell?ed)"[^{}]*\}/gi;
         const jsonMatches = logContent.match(jsonStepPattern);
         if (jsonMatches) {
             for (const match of jsonMatches) {
@@ -36421,8 +36422,7 @@ async function checkPreviousStepFailures(runnerBasePath) {
                     if (contextEnd > contextStart) {
                         const contextJson = logContent.substring(contextStart, contextEnd);
                         const stepData = JSON.parse(contextJson);
-                        if (stepData.result === "failed" ||
-                            stepData.result === "cancelled") {
+                        if (FAILURE_RESULT.test(stepData.result)) {
                             failedSteps.push({
                                 action: stepData.action,
                                 stepName: stepData.stepName || stepData.displayName,
@@ -36436,8 +36436,7 @@ async function checkPreviousStepFailures(runnerBasePath) {
                     // If we can't parse the full context, at least record the failure
                     try {
                         const basicStep = JSON.parse(match);
-                        if (basicStep.result === "failed" ||
-                            basicStep.result === "cancelled") {
+                        if (FAILURE_RESULT.test(basicStep.result)) {
                             failedSteps.push({
                                 result: basicStep.result,
                             });
