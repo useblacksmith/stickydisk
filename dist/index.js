@@ -36446,6 +36446,28 @@ const stickydisk_pb_UpResponse = proto3.makeMessageType(
 );
 
 
+;// CONCATENATED MODULE: ./src/commit-intent.ts
+
+// commitIntentFromMode maps the action's commit input to the wire enum. The
+// enum is the canonical in-code representation of the commit mode; the raw
+// string survives only at the boundaries (action input, GitHub Actions state,
+// log messages).
+function commitIntentFromMode(commitMode) {
+    switch (commitMode) {
+        case "true":
+            return stickydisk_pb_CommitIntent.ALWAYS;
+        case "false":
+            return stickydisk_pb_CommitIntent.NEVER;
+        case "if-missing":
+            return stickydisk_pb_CommitIntent.IF_MISSING;
+        case "on-change":
+            return stickydisk_pb_CommitIntent.ON_CHANGE;
+        default:
+            return stickydisk_pb_CommitIntent.UNSPECIFIED;
+    }
+}
+
+
 // EXTERNAL MODULE: external "os"
 var external_os_ = __nccwpck_require__(857);
 ;// CONCATENATED MODULE: ./src/path.ts
@@ -36493,23 +36515,7 @@ const execAsync = (0,external_util_.promisify)(external_child_process_.exec);
 // expose the sticky disk from the storage agent, map it onto the host and then patch the drive
 // into the VM.
 const stickyDiskTimeoutMs = 45000;
-// commitIntentFromMode maps the action's commit input to the wire enum so the
-// VM agent knows at mount time whether this disk can ever commit.
-function commitIntentFromMode(commitMode) {
-    switch (commitMode) {
-        case "true":
-            return stickydisk_pb_CommitIntent.ALWAYS;
-        case "false":
-            return stickydisk_pb_CommitIntent.NEVER;
-        case "if-missing":
-            return stickydisk_pb_CommitIntent.IF_MISSING;
-        case "on-change":
-            return stickydisk_pb_CommitIntent.ON_CHANGE;
-        default:
-            return stickydisk_pb_CommitIntent.UNSPECIFIED;
-    }
-}
-async function getStickyDisk(stickyDiskKey, commitMode, options) {
+async function getStickyDisk(stickyDiskKey, commitIntent, options) {
     const client = createStickyDiskClient();
     core.debug(`Getting sticky disk for ${stickyDiskKey}`);
     const response = await client.getStickyDisk({
@@ -36520,7 +36526,7 @@ async function getStickyDisk(stickyDiskKey, commitMode, options) {
         stickyDiskType: "stickydisk",
         stickyDiskToken: process.env.BLACKSMITH_STICKYDISK_TOKEN,
         repoName: process.env.GITHUB_REPO_NAME || "",
-        commitIntent: commitIntentFromMode(commitMode),
+        commitIntent,
     }, {
         signal: options === null || options === void 0 ? void 0 : options.signal,
     });
@@ -36636,11 +36642,11 @@ async function createMountPoint(stickyDiskPath) {
         await execAsync(`sudo chown $(id -u):$(id -g) ${shellQuote(workspaceParentPath)}`);
     }
 }
-async function mountStickyDisk(stickyDiskKey, commitMode, stickyDiskPath, signal, controller) {
+async function mountStickyDisk(stickyDiskKey, commitIntent, stickyDiskPath, signal, controller) {
     const timeoutId = setTimeout(() => controller.abort(), stickyDiskTimeoutMs);
     let stickyDiskResponse;
     try {
-        stickyDiskResponse = await getStickyDisk(stickyDiskKey, commitMode, {
+        stickyDiskResponse = await getStickyDisk(stickyDiskKey, commitIntent, {
             signal,
         });
     }
@@ -36691,6 +36697,7 @@ async function run() {
     const stickyDiskKey = (0,core.getInput)("key");
     const stickyDiskPath = normalizeMountPath((0,core.getInput)("path"));
     const commitMode = (0,core.getInput)("commit") || "true";
+    const commitIntent = commitIntentFromMode(commitMode);
     // Save these values to GitHub Actions state
     (0,core.saveState)("STICKYDISK_PATH", stickyDiskPath);
     (0,core.saveState)("STICKYDISK_KEY", stickyDiskKey);
@@ -36704,7 +36711,7 @@ async function run() {
     try {
         const controller = new AbortController();
         try {
-            ({ device, exposeId, wasFormatted } = await mountStickyDisk(stickyDiskKey, commitMode, stickyDiskPath, controller.signal, controller));
+            ({ device, exposeId, wasFormatted } = await mountStickyDisk(stickyDiskKey, commitIntent, stickyDiskPath, controller.signal, controller));
             (0,core.saveState)("STICKYDISK_EXPOSE_ID", exposeId);
             (0,core.saveState)("STICKYDISK_WAS_FORMATTED", wasFormatted ? "true" : "false");
             core.debug(`Sticky disk mounted to ${device}, expose ID: ${exposeId}, freshly formatted: ${wasFormatted}`);
@@ -36730,7 +36737,7 @@ async function run() {
         await ensureFallbackDirectory(stickyDiskPath);
     }
     // Record initial disk usage after mount for on-change detection
-    if (!stickyDiskError && commitMode === "on-change") {
+    if (!stickyDiskError && commitIntent === stickydisk_pb_CommitIntent.ON_CHANGE) {
         const initialUsage = await getInitialDiskUsage(stickyDiskPath);
         if (initialUsage) {
             (0,core.saveState)("STICKYDISK_INITIAL_USAGE_BYTES", initialUsage);
