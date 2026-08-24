@@ -3,6 +3,7 @@ import { promisify } from "util";
 import { exec } from "child_process";
 import { getState } from "@actions/core";
 import { createStickyDiskClient } from "./utils";
+import { CommitIntent, commitIntentFromMode } from "./commit-intent";
 import { checkPreviousStepFailures } from "./step-checker";
 
 const execAsync = promisify(exec);
@@ -234,7 +235,9 @@ async function run(): Promise<void> {
   const stickyDiskPath = getState("STICKYDISK_PATH");
   const exposeId = getState("STICKYDISK_EXPOSE_ID");
   const stickyDiskKey = getState("STICKYDISK_KEY");
-  const commitMode = getState("STICKYDISK_COMMIT_MODE") || "true";
+  const commitIntent = commitIntentFromMode(
+    getState("STICKYDISK_COMMIT_MODE") || "true",
+  );
   const initialUsageBytesStr = getState("STICKYDISK_INITIAL_USAGE_BYTES");
   const wasFormatted = getState("STICKYDISK_WAS_FORMATTED");
   const stickyDiskError = getState("STICKYDISK_ERROR") === "true";
@@ -335,7 +338,7 @@ async function run(): Promise<void> {
     }
 
     // Determine whether to commit based on commit mode
-    if (commitMode === "false") {
+    if (commitIntent === CommitIntent.NEVER) {
       core.info(
         "Commit mode is 'false', skipping sticky disk commit (read-only consumer)",
       );
@@ -343,7 +346,7 @@ async function run(): Promise<void> {
       return;
     }
 
-    if (commitMode === "if-missing" && wasFormatted !== "true") {
+    if (commitIntent === CommitIntent.IF_MISSING && wasFormatted !== "true") {
       core.info(
         "Commit mode is 'if-missing' and a snapshot already existed at mount time (disk was not freshly formatted). Skipping commit.",
       );
@@ -352,7 +355,7 @@ async function run(): Promise<void> {
     }
 
     if (
-      commitMode === "on-change" &&
+      commitIntent === CommitIntent.ON_CHANGE &&
       !shouldCommitOnChange(fsDiskUsageBytes, initialUsageBytesStr)
     ) {
       await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey);

@@ -4,6 +4,7 @@ import { promisify } from "util";
 import { exec } from "child_process";
 import * as path from "path";
 import { createStickyDiskClient, getAgentEndpoint } from "./utils";
+import { CommitIntent, commitIntentFromMode } from "./commit-intent";
 import {
   getWorkspaceLocalParentToChown,
   normalizeMountPath,
@@ -19,6 +20,7 @@ const stickyDiskTimeoutMs = 45000;
 
 async function getStickyDisk(
   stickyDiskKey: string,
+  commitIntent: CommitIntent,
   options?: { signal?: AbortSignal },
 ): Promise<{ expose_id: string; device: string }> {
   const client = createStickyDiskClient();
@@ -33,6 +35,7 @@ async function getStickyDisk(
       stickyDiskType: "stickydisk",
       stickyDiskToken: process.env.BLACKSMITH_STICKYDISK_TOKEN,
       repoName: process.env.GITHUB_REPO_NAME || "",
+      commitIntent,
     },
     {
       signal: options?.signal,
@@ -175,6 +178,7 @@ async function createMountPoint(stickyDiskPath: string): Promise<void> {
 
 async function mountStickyDisk(
   stickyDiskKey: string,
+  commitIntent: CommitIntent,
   stickyDiskPath: string,
   signal: AbortSignal,
   controller: AbortController,
@@ -182,7 +186,9 @@ async function mountStickyDisk(
   const timeoutId = setTimeout(() => controller.abort(), stickyDiskTimeoutMs);
   let stickyDiskResponse: { expose_id: string; device: string };
   try {
-    stickyDiskResponse = await getStickyDisk(stickyDiskKey, { signal });
+    stickyDiskResponse = await getStickyDisk(stickyDiskKey, commitIntent, {
+      signal,
+    });
   } finally {
     clearTimeout(timeoutId);
   }
@@ -250,6 +256,7 @@ async function run(): Promise<void> {
   const stickyDiskKey = getInput("key");
   const stickyDiskPath = normalizeMountPath(getInput("path"));
   const commitMode = getInput("commit") || "true";
+  const commitIntent = commitIntentFromMode(commitMode);
 
   // Save these values to GitHub Actions state
   saveState("STICKYDISK_PATH", stickyDiskPath);
@@ -274,6 +281,7 @@ async function run(): Promise<void> {
     try {
       ({ device, exposeId, wasFormatted } = await mountStickyDisk(
         stickyDiskKey,
+        commitIntent,
         stickyDiskPath,
         controller.signal,
         controller,
@@ -305,7 +313,7 @@ async function run(): Promise<void> {
   }
 
   // Record initial disk usage after mount for on-change detection
-  if (!stickyDiskError && commitMode === "on-change") {
+  if (!stickyDiskError && commitIntent === CommitIntent.ON_CHANGE) {
     const initialUsage = await getInitialDiskUsage(stickyDiskPath);
     if (initialUsage) {
       saveState("STICKYDISK_INITIAL_USAGE_BYTES", initialUsage);
