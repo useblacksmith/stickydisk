@@ -2,6 +2,10 @@ import { promises as fs } from "fs";
 import * as path from "path";
 import * as core from "@actions/core";
 
+// The runner's TaskResult enum spells it "Canceled", not "Cancelled", so a cancelled step
+// was read as a clean run. Accept either spelling, and any casing.
+const FAILURE_RESULT = /^(?:failed|cancell?ed)$/i;
+
 interface StepFailureCheck {
   hasFailures: boolean;
   failedCount: number;
@@ -88,10 +92,8 @@ export async function checkPreviousStepFailures(
 
     // Patterns to match failed or cancelled steps
     const failurePatterns = [
-      /"result":\s*"failed"/g,
-      /"result":\s*"cancelled"/g,
-      /Step result:\s*Failed/g,
-      /Step result:\s*Cancelled/g,
+      /"result":\s*"(?:failed|cancell?ed)"/gi,
+      /Step result:\s*(?:failed|cancell?ed)/gi,
     ];
 
     // Count total failures
@@ -108,7 +110,7 @@ export async function checkPreviousStepFailures(
 
     // Regex to extract JSON objects containing step information
     const jsonStepPattern =
-      /\{[^{}]*"result":\s*"(?:failed|cancelled)"[^{}]*\}/g;
+      /\{[^{}]*"result":\s*"(?:failed|cancell?ed)"[^{}]*\}/gi;
     const jsonMatches = logContent.match(jsonStepPattern);
 
     if (jsonMatches) {
@@ -126,10 +128,7 @@ export async function checkPreviousStepFailures(
             const contextJson = logContent.substring(contextStart, contextEnd);
             const stepData = JSON.parse(contextJson);
 
-            if (
-              stepData.result === "failed" ||
-              stepData.result === "cancelled"
-            ) {
+            if (FAILURE_RESULT.test(stepData.result)) {
               failedSteps.push({
                 action: stepData.action,
                 stepName: stepData.stepName || stepData.displayName,
@@ -142,10 +141,7 @@ export async function checkPreviousStepFailures(
           // If we can't parse the full context, at least record the failure
           try {
             const basicStep = JSON.parse(match);
-            if (
-              basicStep.result === "failed" ||
-              basicStep.result === "cancelled"
-            ) {
+            if (FAILURE_RESULT.test(basicStep.result)) {
               failedSteps.push({
                 result: basicStep.result,
               });
