@@ -1,10 +1,10 @@
 <p align="center">
   <picture>
     <!-- Dark mode -->
-    <source media="(prefers-color-scheme: dark)" srcset="./Blacksmith_Logo-White-Large.png" width="300">
+    <source media="(prefers-color-scheme: dark)" srcset="./wordmark-white.svg" width="300">
     <!-- Light mode -->
-    <source media="(prefers-color-scheme: light)" srcset="./Blacksmith_Logo-Black-Large.png" width="300">
-    <img alt="Blacksmith Logo" src="./Blacksmith_Logo-Black-Large.png" width="300">
+    <source media="(prefers-color-scheme: light)" srcset="./wordmark-black.svg" width="300">
+    <img alt="Blacksmith Logo" src="./wordmark-black.svg" width="300">
   </picture>
 </p>
 
