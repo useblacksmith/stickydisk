@@ -67,24 +67,7 @@ jobs:
 
 ## Bazel Build Caching
 
-Bazel's remote cache can significantly improve build times, but uploading and downloading cached artifacts can still be a bottleneck. Using sticky disks with Blacksmith runners provides near-instant access to your Bazel caches as they are bind mounted into your runners on demand. Our [`useblacksmith/setup-bazel@v2`](https://github.com/useblacksmith/setup-bazel) action is a zero-confg way to use sticky disks to store the disk, repository, and external cache.
-
-```yaml
-jobs:
-  build:
-    runs-on: blacksmith-4vcpu-ubuntu-2204
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Bazel
-        uses: useblacksmith/setup-bazel@v2
-        with:
-          version: "6.x"
-
-      - name: Build
-        run: |
-          bazel build //...
-```
+Blacksmith natively supports [Bazel remote caching](https://docs.blacksmith.sh/blacksmith-caching/bazel-build-caching) on Blacksmith runners. It transparently caches build artifacts across jobs without requiring sticky disks, workflow changes, or `.bazelrc` configuration.
 
 ## Go Build and Module Cache
 
