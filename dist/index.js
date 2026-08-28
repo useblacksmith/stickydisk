@@ -36501,7 +36501,7 @@ function getWorkspaceLocalParentToChown(mountPath, cwd = process.cwd()) {
     return null;
 }
 
-;// CONCATENATED MODULE: ./src/main.ts
+;// CONCATENATED MODULE: ./src/mount.ts
 
 
 
@@ -36689,7 +36689,7 @@ async function getInitialDiskUsage(stickyDiskPath) {
     }
     return null;
 }
-async function run() {
+async function runMount() {
     let stickyDiskError;
     let exposeId;
     let device = "";
@@ -36745,5 +36745,8 @@ async function run() {
         }
     }
 }
-run();
+
+;// CONCATENATED MODULE: ./src/bin/main.ts
+
+runMount();
 

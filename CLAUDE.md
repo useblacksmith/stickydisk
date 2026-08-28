@@ -37,10 +37,11 @@ git add dist/
 ## Project Structure
 
 - `src/` - Source TypeScript files
-  - `main.ts` - Main action entry point
-  - `post.ts` - Post-action cleanup
-  - `step-checker.ts` - Checks for failed workflow steps
-  - `utils.ts` - Utility functions
+- `bin/` - Self-executing entry files, one per shipped bundle (main and post phases)
+- `mount.ts` - Main-phase implementation (mounting the sticky disk)
+- `unmount.ts` - Post-phase implementation (unmounting and committing)
+- `step-checker.ts` - Checks for failed workflow steps
+- `utils.ts` - Utility functions
 - `dist/` - Compiled JavaScript output (auto-generated, should be committed)
 - `action.yml` - GitHub Action configuration
 

@@ -248,7 +248,7 @@ async function getInitialDiskUsage(
   return null;
 }
 
-async function run(): Promise<void> {
+export async function runMount(): Promise<void> {
   let stickyDiskError: Error | undefined;
   let exposeId: string | undefined;
   let device = "";
@@ -321,5 +321,3 @@ async function run(): Promise<void> {
     }
   }
 }
-
-run();

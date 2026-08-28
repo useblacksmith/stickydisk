@@ -36619,7 +36619,7 @@ async function hasAnyStepFailed(runnerBasePath) {
     return result.hasFailures;
 }
 
-;// CONCATENATED MODULE: ./src/post.ts
+;// CONCATENATED MODULE: ./src/unmount.ts
 
 
 
@@ -36784,7 +36784,7 @@ function shouldCommitOnChange(fsDiskUsageBytes, initialUsageBytesStr) {
     core.info(`Filesystem changed (initial: ${initialUsageBytes} bytes, current: ${fsDiskUsageBytes} bytes, delta: ${delta} bytes). Committing (on-change mode).`);
     return true;
 }
-async function run() {
+async function runUnmount() {
     const stickyDiskPath = (0,core.getState)("STICKYDISK_PATH");
     const exposeId = (0,core.getState)("STICKYDISK_EXPOSE_ID");
     const stickyDiskKey = (0,core.getState)("STICKYDISK_KEY");
@@ -36920,5 +36920,8 @@ async function run() {
         }
     }
 }
-run();
+
+;// CONCATENATED MODULE: ./src/bin/post.ts
+
+runUnmount();
 

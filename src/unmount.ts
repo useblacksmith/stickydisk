@@ -231,7 +231,7 @@ function shouldCommitOnChange(
   return true;
 }
 
-async function run(): Promise<void> {
+export async function runUnmount(): Promise<void> {
   const stickyDiskPath = getState("STICKYDISK_PATH");
   const exposeId = getState("STICKYDISK_EXPOSE_ID");
   const stickyDiskKey = getState("STICKYDISK_KEY");
@@ -411,5 +411,3 @@ async function run(): Promise<void> {
     }
   }
 }
-
-run();

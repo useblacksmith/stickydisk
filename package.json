@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "ncc build src/main.ts -o dist && ncc build src/post.ts -o dist/post",
+    "build": "ncc build src/bin/main.ts -o dist && ncc build src/bin/post.ts -o dist/post",
     "format": "prettier --write --cache . !dist",
     "lint": "eslint",
     "test": "jest"
