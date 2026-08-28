@@ -15,6 +15,18 @@ inputs:
     description: "Controls whether the disk is committed (snapshotted) after the job. 'true' always commits (default), 'false' never commits (read-only consumers), 'on-change' only commits if filesystem content changed since mount, 'if-missing' only commits if no prior snapshot existed (the disk was freshly formatted)."
     required: false
     default: "true"
+  go-caching:
+    description: "When 'true', configures the sticky disk as a Go cache: sets GOCACHE and GOMODCACHE to subdirectories of the mount path for subsequent steps, and wipes either cache after the job if it exceeds its size limit so the committed snapshot stays bounded. Opt-in; has no effect on other sticky disk usage."
+    required: false
+    default: "false"
+  go-build-cache-limit-gb:
+    description: "Maximum size in GiB of the Go build cache (GOCACHE) before it is wiped after the job. Only used when go-caching is 'true'. Set to 0 to disable trimming."
+    required: false
+    default: "10"
+  go-mod-cache-limit-gb:
+    description: "Maximum size in GiB of the Go module cache (GOMODCACHE) before it is wiped after the job. Only used when go-caching is 'true'. Set to 0 to disable trimming."
+    required: false
+    default: "5"
 runs:
   using: "node24"
   main: "dist/index.js"

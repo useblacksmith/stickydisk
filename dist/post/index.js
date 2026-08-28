@@ -27411,7 +27411,7 @@ module.exports = parseParams
 var __webpack_exports__ = {};
 
 // EXTERNAL MODULE: ./node_modules/@actions/core/lib/core.js
-var core = __nccwpck_require__(7484);
+var lib_core = __nccwpck_require__(7484);
 // EXTERNAL MODULE: external "util"
 var external_util_ = __nccwpck_require__(9023);
 // EXTERNAL MODULE: external "child_process"
@@ -36289,7 +36289,7 @@ function createStickyDiskClient() {
     if (!endpoint) {
         throw new Error("BLACKSMITH_AGENT_ADDR or BLACKSMITH_STICKY_DISK_GRPC_PORT is not set; cannot dial the Blacksmith agent");
     }
-    core.info(`Creating sticky disk client for ${endpoint}`);
+    lib_core.info(`Creating sticky disk client for ${endpoint}`);
     const transport = createGrpcTransport({
         baseUrl: `http://${endpoint}`,
         httpVersion: "2",
@@ -36514,8 +36514,8 @@ async function checkPreviousStepFailures(runnerBasePath) {
         // Find the Worker log file in _diag directory
         const diagPath = external_path_.join(runnerBasePath, "_diag");
         // Log the detected paths for debugging
-        core.debug(`Detected runner base path: ${runnerBasePath}`);
-        core.debug(`Looking for _diag at: ${diagPath}`);
+        lib_core.debug(`Detected runner base path: ${runnerBasePath}`);
+        lib_core.debug(`Looking for _diag at: ${diagPath}`);
         // Check if _diag directory exists
         try {
             await external_fs_.promises.access(diagPath);
@@ -36590,7 +36590,7 @@ async function checkPreviousStepFailures(runnerBasePath) {
                     }
                     catch {
                         // Skip malformed JSON
-                        core.debug("Skipping malformed JSON in log parsing");
+                        lib_core.debug("Skipping malformed JSON in log parsing");
                     }
                 }
             }
@@ -36619,6 +36619,141 @@ async function hasAnyStepFailed(runnerBasePath) {
     return result.hasFailures;
 }
 
+// EXTERNAL MODULE: external "os"
+var external_os_ = __nccwpck_require__(857);
+;// CONCATENATED MODULE: ./src/path.ts
+
+
+function path_shellQuote(value) {
+    return `'${value.replace(/'/g, "'\\''")}'`;
+}
+function normalizeMountPath(inputPath, options) {
+    var _a, _b;
+    const home = (_a = options === null || options === void 0 ? void 0 : options.home) !== null && _a !== void 0 ? _a : homedir();
+    const cwd = (_b = options === null || options === void 0 ? void 0 : options.cwd) !== null && _b !== void 0 ? _b : process.cwd();
+    if (inputPath === "~") {
+        return home;
+    }
+    if (inputPath.startsWith("~/")) {
+        return path.join(home, inputPath.slice(2));
+    }
+    if (path.isAbsolute(inputPath)) {
+        return path.normalize(inputPath);
+    }
+    return path.resolve(cwd, inputPath);
+}
+function getWorkspaceLocalParentToChown(mountPath, cwd = process.cwd()) {
+    const workspacePath = path.resolve(cwd);
+    const parentPath = path.dirname(path.resolve(mountPath));
+    if (parentPath !== workspacePath &&
+        parentPath.startsWith(`${workspacePath}${path.sep}`)) {
+        return parentPath;
+    }
+    return null;
+}
+
+;// CONCATENATED MODULE: ./src/go-cache.ts
+
+
+
+
+
+const execAsync = (0,external_util_.promisify)(external_child_process_.exec);
+// Subdirectories of the sticky disk mount that hold the Go caches when
+// go-caching is enabled. GOCACHE and GOMODCACHE must be distinct directories,
+// so both live side by side on a single sticky disk.
+const GO_BUILD_CACHE_SUBDIR = "go-build";
+const GO_MOD_CACHE_SUBDIR = "go-mod";
+const DEFAULT_GO_BUILD_CACHE_LIMIT_GB = 10;
+const DEFAULT_GO_MOD_CACHE_LIMIT_GB = 5;
+function parseCacheLimitGb(value, defaultGb) {
+    const trimmed = value.trim();
+    if (!trimmed) {
+        return defaultGb;
+    }
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+        return null;
+    }
+    // 0 disables the size limit.
+    return parsed;
+}
+function goBuildCachePath(stickyDiskPath) {
+    return external_path_.join(stickyDiskPath, GO_BUILD_CACHE_SUBDIR);
+}
+function goModCachePath(stickyDiskPath) {
+    return external_path_.join(stickyDiskPath, GO_MOD_CACHE_SUBDIR);
+}
+// Creates the Go cache directories on the sticky disk and points GOCACHE and
+// GOMODCACHE at them for all subsequent steps in the job.
+async function setupGoCaches(stickyDiskPath) {
+    const buildCache = goBuildCachePath(stickyDiskPath);
+    const modCache = goModCachePath(stickyDiskPath);
+    await execAsync(`mkdir -p ${shellQuote(buildCache)} ${shellQuote(modCache)}`);
+    core.exportVariable("GOCACHE", buildCache);
+    core.exportVariable("GOMODCACHE", modCache);
+    core.info(`Go caching enabled: GOCACHE=${buildCache} GOMODCACHE=${modCache}`);
+}
+async function dirSizeBytes(dir) {
+    try {
+        const { stdout } = await execAsync(`du -sB1 ${path_shellQuote(dir)} | cut -f1`);
+        const size = parseInt(stdout.trim(), 10);
+        return isNaN(size) ? null : size;
+    }
+    catch (error) {
+        lib_core.debug(`Could not measure size of ${dir}: ${error instanceof Error ? error.message : String(error)}`);
+        return null;
+    }
+}
+async function wipeDir(dir) {
+    // The Go module cache is written with read-only permissions, so a plain
+    // rm -rf as the runner user fails on it. Remove with sudo and recreate the
+    // directory owned by the runner user.
+    await execAsync(`sudo rm -rf ${path_shellQuote(dir)}`);
+    await execAsync(`mkdir -p ${path_shellQuote(dir)}`);
+}
+// Wipes each Go cache directory that has grown past its size limit so the
+// committed snapshot stays bounded. A limit of 0 disables trimming for that
+// cache. Must run while the sticky disk is still mounted.
+async function trimGoCaches(stickyDiskPath, buildLimitGb, modLimitGb) {
+    const caches = [
+        {
+            name: "GOCACHE",
+            dir: goBuildCachePath(stickyDiskPath),
+            limitGb: buildLimitGb,
+        },
+        {
+            name: "GOMODCACHE",
+            dir: goModCachePath(stickyDiskPath),
+            limitGb: modLimitGb,
+        },
+    ];
+    for (const { name, dir, limitGb } of caches) {
+        if (limitGb <= 0) {
+            lib_core.debug(`${name} size limit disabled, skipping trim`);
+            continue;
+        }
+        const sizeBytes = await dirSizeBytes(dir);
+        if (sizeBytes === null) {
+            continue;
+        }
+        const limitBytes = limitGb * (1 << 30);
+        const sizeGb = (sizeBytes / (1 << 30)).toFixed(2);
+        if (sizeBytes > limitBytes) {
+            lib_core.info(`${name} at ${dir} is ${sizeGb} GiB, over the ${limitGb} GiB limit; wiping it before commit`);
+            try {
+                await wipeDir(dir);
+            }
+            catch (error) {
+                lib_core.warning(`Failed to wipe ${name} at ${dir}: ${error instanceof Error ? error.message : String(error)}`);
+            }
+        }
+        else {
+            lib_core.info(`${name} at ${dir} is ${sizeGb} GiB, within the ${limitGb} GiB limit`);
+        }
+    }
+}
+
 ;// CONCATENATED MODULE: ./src/post.ts
 
 
@@ -36627,11 +36762,12 @@ async function hasAnyStepFailed(runnerBasePath) {
 
 
 
-const execAsync = (0,external_util_.promisify)(external_child_process_.exec);
+
+const post_execAsync = (0,external_util_.promisify)(external_child_process_.exec);
 async function commitStickydisk(exposeId, stickyDiskKey, fsDiskUsageBytes) {
-    core.info(`Committing sticky disk ${stickyDiskKey} with expose ID ${exposeId}`);
+    lib_core.info(`Committing sticky disk ${stickyDiskKey} with expose ID ${exposeId}`);
     if (!exposeId || !stickyDiskKey) {
-        core.warning("No expose ID or sticky disk key found, cannot report sticky disk to Blacksmith");
+        lib_core.warning("No expose ID or sticky disk key found, cannot report sticky disk to Blacksmith");
         return;
     }
     try {
@@ -36648,24 +36784,24 @@ async function commitStickydisk(exposeId, stickyDiskKey, fsDiskUsageBytes) {
         // This allows storage agent to fall back to previous sizing logic when data is unavailable
         if (fsDiskUsageBytes !== null && fsDiskUsageBytes > 0) {
             commitRequest.fsDiskUsageBytes = BigInt(fsDiskUsageBytes);
-            core.debug(`Reporting fs usage: ${fsDiskUsageBytes} bytes`);
+            lib_core.debug(`Reporting fs usage: ${fsDiskUsageBytes} bytes`);
         }
         else {
-            core.debug("No fs usage data available, storage agent will use fallback sizing");
+            lib_core.debug("No fs usage data available, storage agent will use fallback sizing");
         }
         await client.commitStickyDisk(commitRequest, {
             timeoutMs: 30000,
         });
-        core.info(`Successfully committed sticky disk ${stickyDiskKey} with expose ID ${exposeId}`);
+        lib_core.info(`Successfully committed sticky disk ${stickyDiskKey} with expose ID ${exposeId}`);
     }
     catch (error) {
-        core.warning(`Error committing sticky disk: ${error instanceof Error ? error.message : String(error)}`);
+        lib_core.warning(`Error committing sticky disk: ${error instanceof Error ? error.message : String(error)}`);
     }
 }
 async function cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey) {
-    core.info(`Cleaning up sticky disk ${stickyDiskKey} with expose ID ${exposeId}`);
+    lib_core.info(`Cleaning up sticky disk ${stickyDiskKey} with expose ID ${exposeId}`);
     if (!exposeId || !stickyDiskKey) {
-        core.warning("No expose ID or sticky disk key found, cannot report sticky disk to Blacksmith");
+        lib_core.warning("No expose ID or sticky disk key found, cannot report sticky disk to Blacksmith");
         return;
     }
     try {
@@ -36683,30 +36819,30 @@ async function cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey) {
         });
     }
     catch (error) {
-        core.warning(`Error reporting build failed: ${error instanceof Error ? error.message : String(error)}`);
+        lib_core.warning(`Error reporting build failed: ${error instanceof Error ? error.message : String(error)}`);
         // We don't want to fail the build if this fails so we swallow the error.
     }
 }
 async function getDeviceFromMount(mountPoint) {
     try {
-        const { stdout } = await execAsync(`findmnt -n -o SOURCE "${mountPoint}"`);
+        const { stdout } = await post_execAsync(`findmnt -n -o SOURCE "${mountPoint}"`);
         const device = stdout.trim();
         if (device) {
             return device;
         }
     }
     catch {
-        core.info(`findmnt failed for ${mountPoint}, trying mount command`);
+        lib_core.info(`findmnt failed for ${mountPoint}, trying mount command`);
     }
     try {
-        const { stdout } = await execAsync(`mount | grep " ${mountPoint} "`);
+        const { stdout } = await post_execAsync(`mount | grep " ${mountPoint} "`);
         const match = stdout.match(/^(\/dev\/\S+)/);
         if (match) {
             return match[1];
         }
     }
     catch {
-        core.info(`mount grep failed for ${mountPoint}`);
+        lib_core.info(`mount grep failed for ${mountPoint}`);
     }
     return null;
 }
@@ -36715,61 +36851,61 @@ const TIMEOUT_EXIT_CODE = 124;
 async function flushBlockDevice(devicePath) {
     const deviceName = devicePath.replace("/dev/", "");
     if (!deviceName) {
-        core.info(`Could not extract device name from ${devicePath}`);
+        lib_core.info(`Could not extract device name from ${devicePath}`);
         return;
     }
     const statPath = `/sys/block/${deviceName}/stat`;
     let beforeStats = "";
     try {
-        const { stdout } = await execAsync(`cat ${statPath}`);
+        const { stdout } = await post_execAsync(`cat ${statPath}`);
         beforeStats = stdout.trim();
     }
     catch {
-        core.info(`Could not read block device stats before flush: ${statPath}`);
+        lib_core.info(`Could not read block device stats before flush: ${statPath}`);
     }
     const startTime = Date.now();
     try {
-        const { stdout, stderr } = await execAsync(`timeout ${FLUSH_TIMEOUT_SECS} sudo blockdev --flushbufs ${devicePath}; echo "EXIT_CODE:$?"`);
+        const { stdout, stderr } = await post_execAsync(`timeout ${FLUSH_TIMEOUT_SECS} sudo blockdev --flushbufs ${devicePath}; echo "EXIT_CODE:$?"`);
         const duration = Date.now() - startTime;
         // Parse exit code from output
         const exitCodeMatch = stdout.match(/EXIT_CODE:(\d+)/);
         const exitCode = exitCodeMatch ? parseInt(exitCodeMatch[1], 10) : 0;
         if (exitCode === TIMEOUT_EXIT_CODE) {
-            core.info(`guest flush timed out for ${devicePath} after ${FLUSH_TIMEOUT_SECS}s`);
+            lib_core.info(`guest flush timed out for ${devicePath} after ${FLUSH_TIMEOUT_SECS}s`);
             return;
         }
         if (exitCode !== 0) {
-            core.info(`guest flush failed for ${devicePath} after ${duration}ms: exit code ${exitCode}, stderr: ${stderr}`);
+            lib_core.info(`guest flush failed for ${devicePath} after ${duration}ms: exit code ${exitCode}, stderr: ${stderr}`);
             return;
         }
         let afterStats = "";
         try {
-            const { stdout } = await execAsync(`cat ${statPath}`);
+            const { stdout } = await post_execAsync(`cat ${statPath}`);
             afterStats = stdout.trim();
         }
         catch {
-            core.info(`Could not read block device stats after flush: ${statPath}`);
+            lib_core.info(`Could not read block device stats after flush: ${statPath}`);
         }
-        core.info(`guest flush duration: ${duration}ms, device: ${devicePath}, before_stats: ${beforeStats}, after_stats: ${afterStats}`);
+        lib_core.info(`guest flush duration: ${duration}ms, device: ${devicePath}, before_stats: ${beforeStats}, after_stats: ${afterStats}`);
     }
     catch (error) {
         const duration = Date.now() - startTime;
         const errorMsg = error instanceof Error ? error.message : String(error);
-        core.info(`guest flush failed for ${devicePath} after ${duration}ms: ${errorMsg}`);
+        lib_core.info(`guest flush failed for ${devicePath} after ${duration}ms: ${errorMsg}`);
     }
 }
 function shouldCommitOnChange(fsDiskUsageBytes, initialUsageBytesStr) {
     if (!initialUsageBytesStr) {
-        core.info("No initial usage recorded, committing to be safe (on-change mode)");
+        lib_core.info("No initial usage recorded, committing to be safe (on-change mode)");
         return true;
     }
     const initialUsageBytes = parseInt(initialUsageBytesStr, 10);
     if (isNaN(initialUsageBytes)) {
-        core.info("Invalid initial usage value, committing to be safe (on-change mode)");
+        lib_core.info("Invalid initial usage value, committing to be safe (on-change mode)");
         return true;
     }
     if (fsDiskUsageBytes === null) {
-        core.info("Could not determine current usage, committing to be safe (on-change mode)");
+        lib_core.info("Could not determine current usage, committing to be safe (on-change mode)");
         return true;
     }
     const delta = Math.abs(fsDiskUsageBytes - initialUsageBytes);
@@ -36778,44 +36914,45 @@ function shouldCommitOnChange(fsDiskUsageBytes, initialUsageBytesStr) {
     // threshold (one filesystem block) to avoid false positives.
     const thresholdBytes = 4096;
     if (delta <= thresholdBytes) {
-        core.info(`Filesystem unchanged (initial: ${initialUsageBytes} bytes, current: ${fsDiskUsageBytes} bytes, delta: ${delta} bytes <= ${thresholdBytes} byte threshold). Skipping commit (on-change mode).`);
+        lib_core.info(`Filesystem unchanged (initial: ${initialUsageBytes} bytes, current: ${fsDiskUsageBytes} bytes, delta: ${delta} bytes <= ${thresholdBytes} byte threshold). Skipping commit (on-change mode).`);
         return false;
     }
-    core.info(`Filesystem changed (initial: ${initialUsageBytes} bytes, current: ${fsDiskUsageBytes} bytes, delta: ${delta} bytes). Committing (on-change mode).`);
+    lib_core.info(`Filesystem changed (initial: ${initialUsageBytes} bytes, current: ${fsDiskUsageBytes} bytes, delta: ${delta} bytes). Committing (on-change mode).`);
     return true;
 }
 async function run() {
-    const stickyDiskPath = (0,core.getState)("STICKYDISK_PATH");
-    const exposeId = (0,core.getState)("STICKYDISK_EXPOSE_ID");
-    const stickyDiskKey = (0,core.getState)("STICKYDISK_KEY");
-    const commitIntent = commitIntentFromMode((0,core.getState)("STICKYDISK_COMMIT_MODE") || "true");
-    const initialUsageBytesStr = (0,core.getState)("STICKYDISK_INITIAL_USAGE_BYTES");
-    const wasFormatted = (0,core.getState)("STICKYDISK_WAS_FORMATTED");
-    const stickyDiskError = (0,core.getState)("STICKYDISK_ERROR") === "true";
+    const stickyDiskPath = (0,lib_core.getState)("STICKYDISK_PATH");
+    const exposeId = (0,lib_core.getState)("STICKYDISK_EXPOSE_ID");
+    const stickyDiskKey = (0,lib_core.getState)("STICKYDISK_KEY");
+    const commitIntent = commitIntentFromMode((0,lib_core.getState)("STICKYDISK_COMMIT_MODE") || "true");
+    const initialUsageBytesStr = (0,lib_core.getState)("STICKYDISK_INITIAL_USAGE_BYTES");
+    const wasFormatted = (0,lib_core.getState)("STICKYDISK_WAS_FORMATTED");
+    const stickyDiskError = (0,lib_core.getState)("STICKYDISK_ERROR") === "true";
+    const goCaching = (0,lib_core.getState)("STICKYDISK_GO_CACHING") === "true";
     if (!stickyDiskPath) {
-        core.debug("No STICKYDISK_PATH in state, skipping unmount");
+        lib_core.debug("No STICKYDISK_PATH in state, skipping unmount");
         return;
     }
     const logNotMounted = () => {
         if (stickyDiskError) {
-            core.info(`Skipping unmount and commit for ${stickyDiskPath}: the sticky disk mount failed during setup, so there is nothing to unmount and committing could clobber existing cached data`);
+            lib_core.info(`Skipping unmount and commit for ${stickyDiskPath}: the sticky disk mount failed during setup, so there is nothing to unmount and committing could clobber existing cached data`);
         }
         else {
-            core.debug(`${stickyDiskPath} is not mounted, skipping unmount`);
+            lib_core.debug(`${stickyDiskPath} is not mounted, skipping unmount`);
         }
     };
     try {
         // Check if path is mounted and get the device name for later flush
         let devicePath = null;
         try {
-            const { stdout: mountOutput } = await execAsync(`mount | grep "${stickyDiskPath}"`);
+            const { stdout: mountOutput } = await post_execAsync(`mount | grep "${stickyDiskPath}"`);
             if (!mountOutput) {
                 logNotMounted();
                 return;
             }
             devicePath = await getDeviceFromMount(stickyDiskPath);
             if (devicePath) {
-                core.info(`Found device ${devicePath} for mount point ${stickyDiskPath}`);
+                lib_core.info(`Found device ${devicePath} for mount point ${stickyDiskPath}`);
             }
         }
         catch {
@@ -36823,40 +36960,49 @@ async function run() {
             logNotMounted();
             return;
         }
+        // Trim oversized Go caches while the disk is still mounted so the
+        // committed snapshot stays bounded.
+        if (goCaching) {
+            const buildLimitGb = parseFloat((0,lib_core.getState)("STICKYDISK_GO_BUILD_CACHE_LIMIT_GB") ||
+                String(DEFAULT_GO_BUILD_CACHE_LIMIT_GB));
+            const modLimitGb = parseFloat((0,lib_core.getState)("STICKYDISK_GO_MOD_CACHE_LIMIT_GB") ||
+                String(DEFAULT_GO_MOD_CACHE_LIMIT_GB));
+            await trimGoCaches(stickyDiskPath, buildLimitGb, modLimitGb);
+        }
         // Ensure all pending writes are flushed to disk before collecting usage.
-        await execAsync("sync");
+        await post_execAsync("sync");
         // Get filesystem usage BEFORE unmounting (critical timing)
         let fsDiskUsageBytes = null;
         try {
-            const { stdout } = await execAsync(`df -B1 --output=used "${stickyDiskPath}" | tail -n1`);
+            const { stdout } = await post_execAsync(`df -B1 --output=used "${stickyDiskPath}" | tail -n1`);
             const parsedValue = parseInt(stdout.trim(), 10);
             if (isNaN(parsedValue) || parsedValue <= 0) {
-                core.warning(`Invalid filesystem usage value from df: "${stdout.trim()}". Will not report fs usage.`);
+                lib_core.warning(`Invalid filesystem usage value from df: "${stdout.trim()}". Will not report fs usage.`);
             }
             else {
                 fsDiskUsageBytes = parsedValue;
-                core.info(`Filesystem usage: ${fsDiskUsageBytes} bytes (${(fsDiskUsageBytes / (1 << 30)).toFixed(2)} GiB)`);
+                lib_core.info(`Filesystem usage: ${fsDiskUsageBytes} bytes (${(fsDiskUsageBytes / (1 << 30)).toFixed(2)} GiB)`);
             }
         }
         catch (error) {
             const errorMsg = error instanceof Error ? error.message : String(error);
-            core.warning(`Failed to get filesystem usage: ${errorMsg}. Will not report fs usage.`);
+            lib_core.warning(`Failed to get filesystem usage: ${errorMsg}. Will not report fs usage.`);
         }
         // Drop page cache, dentries and inodes to ensure clean unmount
         // This helps prevent "device is busy" errors during unmount
-        await execAsync("sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'");
+        await post_execAsync("sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'");
         // Unmount with retries.
         for (let attempt = 1; attempt <= 10; attempt++) {
             try {
-                await execAsync(`sudo umount "${stickyDiskPath}"`);
-                core.info(`Successfully unmounted ${stickyDiskPath}`);
+                await post_execAsync(`sudo umount "${stickyDiskPath}"`);
+                lib_core.info(`Successfully unmounted ${stickyDiskPath}`);
                 break;
             }
             catch (error) {
                 if (attempt === 10) {
                     throw error;
                 }
-                core.warning(`Unmount failed, retrying (${attempt}/10)...`);
+                lib_core.warning(`Unmount failed, retrying (${attempt}/10)...`);
                 await new Promise((resolve) => setTimeout(resolve, 300));
             }
         }
@@ -36866,16 +37012,16 @@ async function run() {
             await flushBlockDevice(devicePath);
         }
         else {
-            core.info("Skipping durability flush: device path not found for mount point");
+            lib_core.info("Skipping durability flush: device path not found for mount point");
         }
         // Determine whether to commit based on commit mode
         if (commitIntent === stickydisk_pb_CommitIntent.NEVER) {
-            core.info("Commit mode is 'false', skipping sticky disk commit (read-only consumer)");
+            lib_core.info("Commit mode is 'false', skipping sticky disk commit (read-only consumer)");
             await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey);
             return;
         }
         if (commitIntent === stickydisk_pb_CommitIntent.IF_MISSING && wasFormatted !== "true") {
-            core.info("Commit mode is 'if-missing' and a snapshot already existed at mount time (disk was not freshly formatted). Skipping commit.");
+            lib_core.info("Commit mode is 'if-missing' and a snapshot already existed at mount time (disk was not freshly formatted). Skipping commit.");
             await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey);
             return;
         }
@@ -36886,37 +37032,37 @@ async function run() {
         }
         // Check for previous step failures before committing
         if (!stickyDiskError) {
-            core.info("Checking for previous step failures before committing sticky disk");
+            lib_core.info("Checking for previous step failures before committing sticky disk");
             const failureCheck = await checkPreviousStepFailures();
             if (failureCheck.error) {
-                core.warning(`Unable to check for previous step failures: ${failureCheck.error}`);
-                core.warning("Skipping sticky disk commit due to ambiguity in failure detection");
+                lib_core.warning(`Unable to check for previous step failures: ${failureCheck.error}`);
+                lib_core.warning("Skipping sticky disk commit due to ambiguity in failure detection");
                 await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey);
             }
             else if (failureCheck.hasFailures) {
-                core.warning(`Found ${failureCheck.failedCount} failed/cancelled steps in previous workflow steps`);
+                lib_core.warning(`Found ${failureCheck.failedCount} failed/cancelled steps in previous workflow steps`);
                 if (failureCheck.failedSteps) {
                     failureCheck.failedSteps.forEach((step) => {
-                        core.warning(`  - Step: ${step.stepName || step.action || "unknown"} (${step.result})`);
+                        lib_core.warning(`  - Step: ${step.stepName || step.action || "unknown"} (${step.result})`);
                     });
                 }
-                core.warning("Skipping sticky disk commit due to previous step failures");
+                lib_core.warning("Skipping sticky disk commit due to previous step failures");
                 await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey);
             }
             else {
                 // No failures detected
-                core.info("No previous step failures detected, committing sticky disk");
+                lib_core.info("No previous step failures detected, committing sticky disk");
                 await commitStickydisk(exposeId, stickyDiskKey, fsDiskUsageBytes);
             }
         }
         else {
-            core.warning("Skipping sticky disk commit due to sticky disk error during setup");
+            lib_core.warning("Skipping sticky disk commit due to sticky disk error during setup");
             await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey);
         }
     }
     catch (error) {
         if (error instanceof Error) {
-            core.warning(`Failed to cleanup and commit sticky disk at ${stickyDiskPath}: ${error}`);
+            lib_core.warning(`Failed to cleanup and commit sticky disk at ${stickyDiskPath}: ${error}`);
         }
     }
 }

@@ -6,6 +6,12 @@ import * as path from "path";
 import { createStickyDiskClient, getAgentEndpoint } from "./utils";
 import { CommitIntent, commitIntentFromMode } from "./commit-intent";
 import {
+  DEFAULT_GO_BUILD_CACHE_LIMIT_GB,
+  DEFAULT_GO_MOD_CACHE_LIMIT_GB,
+  parseCacheLimitGb,
+  setupGoCaches,
+} from "./go-cache";
+import {
   getWorkspaceLocalParentToChown,
   normalizeMountPath,
   shellQuote,
@@ -257,17 +263,41 @@ async function run(): Promise<void> {
   const stickyDiskPath = normalizeMountPath(getInput("path"));
   const commitMode = getInput("commit") || "true";
   const commitIntent = commitIntentFromMode(commitMode);
+  const goCaching = getInput("go-caching") === "true";
 
   // Save these values to GitHub Actions state
   saveState("STICKYDISK_PATH", stickyDiskPath);
   saveState("STICKYDISK_KEY", stickyDiskKey);
   saveState("STICKYDISK_COMMIT_MODE", commitMode);
 
+  if (goCaching) {
+    const buildLimitGb = parseCacheLimitGb(
+      getInput("go-build-cache-limit-gb"),
+      DEFAULT_GO_BUILD_CACHE_LIMIT_GB,
+    );
+    const modLimitGb = parseCacheLimitGb(
+      getInput("go-mod-cache-limit-gb"),
+      DEFAULT_GO_MOD_CACHE_LIMIT_GB,
+    );
+    if (buildLimitGb === null || modLimitGb === null) {
+      core.setFailed(
+        "go-build-cache-limit-gb and go-mod-cache-limit-gb must be non-negative numbers",
+      );
+      return;
+    }
+    saveState("STICKYDISK_GO_CACHING", "true");
+    saveState("STICKYDISK_GO_BUILD_CACHE_LIMIT_GB", String(buildLimitGb));
+    saveState("STICKYDISK_GO_MOD_CACHE_LIMIT_GB", String(modLimitGb));
+  }
+
   if (!getAgentEndpoint()) {
     core.warning(
       `BLACKSMITH_AGENT_ADDR or BLACKSMITH_STICKY_DISK_GRPC_PORT is not set; sticky disks are unavailable on this runner. Creating ${stickyDiskPath} as a plain directory instead (contents will not persist across runs).`,
     );
     await ensureFallbackDirectory(stickyDiskPath);
+    if (goCaching) {
+      await setupGoCaches(stickyDiskPath);
+    }
     return;
   }
 
@@ -310,6 +340,10 @@ async function run(): Promise<void> {
     // writable directory so downstream steps behave as if this were a fresh
     // sticky disk (a cache miss) rather than failing on a missing path.
     await ensureFallbackDirectory(stickyDiskPath);
+  }
+
+  if (goCaching) {
+    await setupGoCaches(stickyDiskPath);
   }
 
   // Record initial disk usage after mount for on-change detection

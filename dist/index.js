@@ -27411,7 +27411,7 @@ module.exports = parseParams
 var __webpack_exports__ = {};
 
 // EXTERNAL MODULE: ./node_modules/@actions/core/lib/core.js
-var core = __nccwpck_require__(7484);
+var lib_core = __nccwpck_require__(7484);
 // EXTERNAL MODULE: external "util"
 var external_util_ = __nccwpck_require__(9023);
 // EXTERNAL MODULE: external "child_process"
@@ -36291,7 +36291,7 @@ function createStickyDiskClient() {
     if (!endpoint) {
         throw new Error("BLACKSMITH_AGENT_ADDR or BLACKSMITH_STICKY_DISK_GRPC_PORT is not set; cannot dial the Blacksmith agent");
     }
-    core.info(`Creating sticky disk client for ${endpoint}`);
+    lib_core.info(`Creating sticky disk client for ${endpoint}`);
     const transport = createGrpcTransport({
         baseUrl: `http://${endpoint}`,
         httpVersion: "2",
@@ -36473,7 +36473,7 @@ var external_os_ = __nccwpck_require__(857);
 ;// CONCATENATED MODULE: ./src/path.ts
 
 
-function shellQuote(value) {
+function path_shellQuote(value) {
     return `'${value.replace(/'/g, "'\\''")}'`;
 }
 function normalizeMountPath(inputPath, options) {
@@ -36501,6 +36501,108 @@ function getWorkspaceLocalParentToChown(mountPath, cwd = process.cwd()) {
     return null;
 }
 
+;// CONCATENATED MODULE: ./src/go-cache.ts
+
+
+
+
+
+const execAsync = (0,external_util_.promisify)(external_child_process_.exec);
+// Subdirectories of the sticky disk mount that hold the Go caches when
+// go-caching is enabled. GOCACHE and GOMODCACHE must be distinct directories,
+// so both live side by side on a single sticky disk.
+const GO_BUILD_CACHE_SUBDIR = "go-build";
+const GO_MOD_CACHE_SUBDIR = "go-mod";
+const DEFAULT_GO_BUILD_CACHE_LIMIT_GB = 10;
+const DEFAULT_GO_MOD_CACHE_LIMIT_GB = 5;
+function parseCacheLimitGb(value, defaultGb) {
+    const trimmed = value.trim();
+    if (!trimmed) {
+        return defaultGb;
+    }
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+        return null;
+    }
+    // 0 disables the size limit.
+    return parsed;
+}
+function goBuildCachePath(stickyDiskPath) {
+    return external_path_.join(stickyDiskPath, GO_BUILD_CACHE_SUBDIR);
+}
+function goModCachePath(stickyDiskPath) {
+    return external_path_.join(stickyDiskPath, GO_MOD_CACHE_SUBDIR);
+}
+// Creates the Go cache directories on the sticky disk and points GOCACHE and
+// GOMODCACHE at them for all subsequent steps in the job.
+async function setupGoCaches(stickyDiskPath) {
+    const buildCache = goBuildCachePath(stickyDiskPath);
+    const modCache = goModCachePath(stickyDiskPath);
+    await execAsync(`mkdir -p ${path_shellQuote(buildCache)} ${path_shellQuote(modCache)}`);
+    lib_core.exportVariable("GOCACHE", buildCache);
+    lib_core.exportVariable("GOMODCACHE", modCache);
+    lib_core.info(`Go caching enabled: GOCACHE=${buildCache} GOMODCACHE=${modCache}`);
+}
+async function dirSizeBytes(dir) {
+    try {
+        const { stdout } = await execAsync(`du -sB1 ${shellQuote(dir)} | cut -f1`);
+        const size = parseInt(stdout.trim(), 10);
+        return isNaN(size) ? null : size;
+    }
+    catch (error) {
+        core.debug(`Could not measure size of ${dir}: ${error instanceof Error ? error.message : String(error)}`);
+        return null;
+    }
+}
+async function wipeDir(dir) {
+    // The Go module cache is written with read-only permissions, so a plain
+    // rm -rf as the runner user fails on it. Remove with sudo and recreate the
+    // directory owned by the runner user.
+    await execAsync(`sudo rm -rf ${shellQuote(dir)}`);
+    await execAsync(`mkdir -p ${shellQuote(dir)}`);
+}
+// Wipes each Go cache directory that has grown past its size limit so the
+// committed snapshot stays bounded. A limit of 0 disables trimming for that
+// cache. Must run while the sticky disk is still mounted.
+async function trimGoCaches(stickyDiskPath, buildLimitGb, modLimitGb) {
+    const caches = [
+        {
+            name: "GOCACHE",
+            dir: goBuildCachePath(stickyDiskPath),
+            limitGb: buildLimitGb,
+        },
+        {
+            name: "GOMODCACHE",
+            dir: goModCachePath(stickyDiskPath),
+            limitGb: modLimitGb,
+        },
+    ];
+    for (const { name, dir, limitGb } of caches) {
+        if (limitGb <= 0) {
+            core.debug(`${name} size limit disabled, skipping trim`);
+            continue;
+        }
+        const sizeBytes = await dirSizeBytes(dir);
+        if (sizeBytes === null) {
+            continue;
+        }
+        const limitBytes = limitGb * (1 << 30);
+        const sizeGb = (sizeBytes / (1 << 30)).toFixed(2);
+        if (sizeBytes > limitBytes) {
+            core.info(`${name} at ${dir} is ${sizeGb} GiB, over the ${limitGb} GiB limit; wiping it before commit`);
+            try {
+                await wipeDir(dir);
+            }
+            catch (error) {
+                core.warning(`Failed to wipe ${name} at ${dir}: ${error instanceof Error ? error.message : String(error)}`);
+            }
+        }
+        else {
+            core.info(`${name} at ${dir} is ${sizeGb} GiB, within the ${limitGb} GiB limit`);
+        }
+    }
+}
+
 ;// CONCATENATED MODULE: ./src/main.ts
 
 
@@ -36510,14 +36612,15 @@ function getWorkspaceLocalParentToChown(mountPath, cwd = process.cwd()) {
 
 
 
-const execAsync = (0,external_util_.promisify)(external_child_process_.exec);
+
+const main_execAsync = (0,external_util_.promisify)(external_child_process_.exec);
 // stickyDiskTimeoutMs states the max amount of time this action will wait for the VM agent to
 // expose the sticky disk from the storage agent, map it onto the host and then patch the drive
 // into the VM.
 const stickyDiskTimeoutMs = 45000;
 async function getStickyDisk(stickyDiskKey, commitIntent, options) {
     const client = createStickyDiskClient();
-    core.debug(`Getting sticky disk for ${stickyDiskKey}`);
+    lib_core.debug(`Getting sticky disk for ${stickyDiskKey}`);
     const response = await client.getStickyDisk({
         stickyDiskKey: stickyDiskKey,
         region: process.env.BLACKSMITH_REGION || "eu-central",
@@ -36544,7 +36647,7 @@ async function waitForNonZeroDeviceSize(device, timeoutMs) {
     const deadline = Date.now() + timeoutMs;
     for (;;) {
         try {
-            const { stdout } = await execAsync(`sudo blockdev --getsize64 ${device}`);
+            const { stdout } = await main_execAsync(`sudo blockdev --getsize64 ${device}`);
             const size = parseInt(stdout.trim(), 10);
             if (!isNaN(size) && size > 0) {
                 return;
@@ -36564,18 +36667,18 @@ async function maybeFormatBlockDevice(device) {
         // Check if device is formatted with ext4
         try {
             // Need sudo for blkid as it requires root to read block device metadata
-            const { stdout } = await execAsync(`sudo blkid -o value -s TYPE ${device}`);
+            const { stdout } = await main_execAsync(`sudo blkid -o value -s TYPE ${device}`);
             if (stdout.trim() === "ext4") {
-                core.debug(`Device ${device} is already formatted with ext4`);
+                lib_core.debug(`Device ${device} is already formatted with ext4`);
                 try {
                     // Need sudo for resize2fs as it requires root to modify block device
                     // This operation preserves existing filesystem ownership and permissions
-                    await execAsync(`sudo resize2fs -f ${device}`);
-                    core.debug(`Resized ext4 filesystem on ${device}`);
+                    await main_execAsync(`sudo resize2fs -f ${device}`);
+                    lib_core.debug(`Resized ext4 filesystem on ${device}`);
                 }
                 catch (error) {
                     if (error instanceof Error) {
-                        core.warning(`Error resizing ext4 filesystem on ${device}: ${error}`);
+                        lib_core.warning(`Error resizing ext4 filesystem on ${device}: ${error}`);
                     }
                 }
                 return { device, wasFormatted: false };
@@ -36583,41 +36686,41 @@ async function maybeFormatBlockDevice(device) {
         }
         catch {
             // blkid returns non-zero if no filesystem found, which is fine
-            core.debug(`No filesystem found on ${device}, will format it`);
+            lib_core.debug(`No filesystem found on ${device}, will format it`);
         }
         // Format device with ext4, setting default ownership to current user.
-        core.debug(`Formatting device ${device} with ext4`);
+        lib_core.debug(`Formatting device ${device} with ext4`);
         // Need sudo for mkfs.ext4 as it requires root to format block device
         // -m0: Disable reserved blocks (all space available to non-root users)
         // root_owner=$(id -u):$(id -g): Sets filesystem root directory owner to current (runner) user
         // This ensures the filesystem is owned by runner user from the start
-        await execAsync(`sudo mkfs.ext4 -m0 -E root_owner=$(id -u):$(id -g) -Enodiscard,lazy_itable_init=1,lazy_journal_init=1 -F ${device}`);
-        core.debug(`Successfully formatted ${device} with ext4`);
+        await main_execAsync(`sudo mkfs.ext4 -m0 -E root_owner=$(id -u):$(id -g) -Enodiscard,lazy_itable_init=1,lazy_journal_init=1 -F ${device}`);
+        lib_core.debug(`Successfully formatted ${device} with ext4`);
         // Remove lost+found directory to prevent permission issues.
         // mkfs.ext4 always creates lost+found with root:root 0700 permissions for fsck recovery.
         // This causes EACCES errors when tools (pnpm, yarn, npm, docker buildx) recursively scan
         // directories mounted from sticky disks (e.g., ./node_modules, ./build-cache).
         // For ephemeral CI cache filesystems, lost+found is unnecessary - corruption can be
         // resolved by rebuilding the cache. Removing it prevents unpredictable build failures.
-        core.debug(`Removing lost+found directory from ${device}`);
+        lib_core.debug(`Removing lost+found directory from ${device}`);
         const tempMount = `/tmp/stickydisk-init-${Date.now()}`;
         try {
-            await execAsync(`sudo mkdir -p ${tempMount}`);
-            await execAsync(`sudo mount -o noinit_itable ${device} ${tempMount}`);
-            await execAsync(`sudo rm -rf ${tempMount}/lost+found`);
-            await execAsync(`sudo umount ${tempMount}`);
-            await execAsync(`sudo rmdir ${tempMount}`);
-            core.debug(`Removed lost+found directory from ${device}`);
+            await main_execAsync(`sudo mkdir -p ${tempMount}`);
+            await main_execAsync(`sudo mount -o noinit_itable ${device} ${tempMount}`);
+            await main_execAsync(`sudo rm -rf ${tempMount}/lost+found`);
+            await main_execAsync(`sudo umount ${tempMount}`);
+            await main_execAsync(`sudo rmdir ${tempMount}`);
+            lib_core.debug(`Removed lost+found directory from ${device}`);
         }
         catch (error) {
-            core.warning(`Failed to remove lost+found directory: ${error instanceof Error ? error.message : String(error)}`);
+            lib_core.warning(`Failed to remove lost+found directory: ${error instanceof Error ? error.message : String(error)}`);
             // Non-fatal - continue even if cleanup fails
         }
         return { device, wasFormatted: true };
     }
     catch (error) {
         if (error instanceof Error) {
-            core.warning(`Failed to format device ${device}: ${error}`);
+            lib_core.warning(`Failed to format device ${device}: ${error}`);
         }
         throw error;
     }
@@ -36629,17 +36732,17 @@ async function maybeFormatBlockDevice(device) {
 async function createMountPoint(stickyDiskPath) {
     const parentPath = external_path_.dirname(stickyDiskPath);
     try {
-        await execAsync(`mkdir -p ${shellQuote(parentPath)}`);
+        await main_execAsync(`mkdir -p ${path_shellQuote(parentPath)}`);
     }
     catch (error) {
-        core.debug(`Could not create mount parent ${parentPath} as current user: ${error instanceof Error ? error.message : String(error)}`);
+        lib_core.debug(`Could not create mount parent ${parentPath} as current user: ${error instanceof Error ? error.message : String(error)}`);
     }
-    await execAsync(`sudo mkdir -p ${shellQuote(stickyDiskPath)}`);
-    await execAsync(`sudo chown $(id -u):$(id -g) ${shellQuote(stickyDiskPath)}`);
+    await main_execAsync(`sudo mkdir -p ${path_shellQuote(stickyDiskPath)}`);
+    await main_execAsync(`sudo chown $(id -u):$(id -g) ${path_shellQuote(stickyDiskPath)}`);
     const workspaceParentPath = getWorkspaceLocalParentToChown(stickyDiskPath);
     if (workspaceParentPath) {
         // Nested workspace mounts such as .nx/cache need a writable parent so tools can recreate them.
-        await execAsync(`sudo chown $(id -u):$(id -g) ${shellQuote(workspaceParentPath)}`);
+        await main_execAsync(`sudo chown $(id -u):$(id -g) ${path_shellQuote(workspaceParentPath)}`);
     }
 }
 async function mountStickyDisk(stickyDiskKey, commitIntent, stickyDiskPath, signal, controller) {
@@ -36660,32 +36763,32 @@ async function mountStickyDisk(stickyDiskKey, commitIntent, stickyDiskPath, sign
     await createMountPoint(stickyDiskPath);
     // noinit_itable stops the background zeroing of a non-trivial portion of
     // the device (uninitialized inode tables), which is unnecessary here.
-    await execAsync(`sudo mount -o noinit_itable ${shellQuote(device)} ${shellQuote(stickyDiskPath)}`);
+    await main_execAsync(`sudo mount -o noinit_itable ${path_shellQuote(device)} ${path_shellQuote(stickyDiskPath)}`);
     // After mounting, ensure the mounted filesystem is owned by runner user
     // This is important because the mount operation might change ownership
-    await execAsync(`sudo chown $(id -u):$(id -g) ${shellQuote(stickyDiskPath)}`);
-    core.debug(`${device} has been mounted to ${stickyDiskPath} with expose ID ${exposeId}`);
+    await main_execAsync(`sudo chown $(id -u):$(id -g) ${path_shellQuote(stickyDiskPath)}`);
+    lib_core.debug(`${device} has been mounted to ${stickyDiskPath} with expose ID ${exposeId}`);
     return { device, exposeId, wasFormatted };
 }
 async function ensureFallbackDirectory(stickyDiskPath) {
     try {
         await createMountPoint(stickyDiskPath);
-        core.info(`Sticky disk unavailable; created empty directory at ${stickyDiskPath} so subsequent steps see a cache miss instead of a missing path`);
+        lib_core.info(`Sticky disk unavailable; created empty directory at ${stickyDiskPath} so subsequent steps see a cache miss instead of a missing path`);
     }
     catch (error) {
-        core.warning(`Failed to create fallback directory at ${stickyDiskPath}: ${error instanceof Error ? error.message : String(error)}`);
+        lib_core.warning(`Failed to create fallback directory at ${stickyDiskPath}: ${error instanceof Error ? error.message : String(error)}`);
     }
 }
 async function getInitialDiskUsage(stickyDiskPath) {
     try {
-        const { stdout } = await execAsync(`df -B1 --output=used ${shellQuote(stickyDiskPath)} | tail -n1`);
+        const { stdout } = await main_execAsync(`df -B1 --output=used ${path_shellQuote(stickyDiskPath)} | tail -n1`);
         const value = stdout.trim();
         if (value && !isNaN(parseInt(value, 10))) {
             return value;
         }
     }
     catch (error) {
-        core.debug(`Could not get initial disk usage: ${error instanceof Error ? error.message : String(error)}`);
+        lib_core.debug(`Could not get initial disk usage: ${error instanceof Error ? error.message : String(error)}`);
     }
     return null;
 }
@@ -36694,31 +36797,46 @@ async function run() {
     let exposeId;
     let device = "";
     let wasFormatted = false;
-    const stickyDiskKey = (0,core.getInput)("key");
-    const stickyDiskPath = normalizeMountPath((0,core.getInput)("path"));
-    const commitMode = (0,core.getInput)("commit") || "true";
+    const stickyDiskKey = (0,lib_core.getInput)("key");
+    const stickyDiskPath = normalizeMountPath((0,lib_core.getInput)("path"));
+    const commitMode = (0,lib_core.getInput)("commit") || "true";
     const commitIntent = commitIntentFromMode(commitMode);
+    const goCaching = (0,lib_core.getInput)("go-caching") === "true";
     // Save these values to GitHub Actions state
-    (0,core.saveState)("STICKYDISK_PATH", stickyDiskPath);
-    (0,core.saveState)("STICKYDISK_KEY", stickyDiskKey);
-    (0,core.saveState)("STICKYDISK_COMMIT_MODE", commitMode);
+    (0,lib_core.saveState)("STICKYDISK_PATH", stickyDiskPath);
+    (0,lib_core.saveState)("STICKYDISK_KEY", stickyDiskKey);
+    (0,lib_core.saveState)("STICKYDISK_COMMIT_MODE", commitMode);
+    if (goCaching) {
+        const buildLimitGb = parseCacheLimitGb((0,lib_core.getInput)("go-build-cache-limit-gb"), DEFAULT_GO_BUILD_CACHE_LIMIT_GB);
+        const modLimitGb = parseCacheLimitGb((0,lib_core.getInput)("go-mod-cache-limit-gb"), DEFAULT_GO_MOD_CACHE_LIMIT_GB);
+        if (buildLimitGb === null || modLimitGb === null) {
+            lib_core.setFailed("go-build-cache-limit-gb and go-mod-cache-limit-gb must be non-negative numbers");
+            return;
+        }
+        (0,lib_core.saveState)("STICKYDISK_GO_CACHING", "true");
+        (0,lib_core.saveState)("STICKYDISK_GO_BUILD_CACHE_LIMIT_GB", String(buildLimitGb));
+        (0,lib_core.saveState)("STICKYDISK_GO_MOD_CACHE_LIMIT_GB", String(modLimitGb));
+    }
     if (!getAgentEndpoint()) {
-        core.warning(`BLACKSMITH_AGENT_ADDR or BLACKSMITH_STICKY_DISK_GRPC_PORT is not set; sticky disks are unavailable on this runner. Creating ${stickyDiskPath} as a plain directory instead (contents will not persist across runs).`);
+        lib_core.warning(`BLACKSMITH_AGENT_ADDR or BLACKSMITH_STICKY_DISK_GRPC_PORT is not set; sticky disks are unavailable on this runner. Creating ${stickyDiskPath} as a plain directory instead (contents will not persist across runs).`);
         await ensureFallbackDirectory(stickyDiskPath);
+        if (goCaching) {
+            await setupGoCaches(stickyDiskPath);
+        }
         return;
     }
-    core.info(`Mounting sticky disk at ${stickyDiskPath} with key ${stickyDiskKey} (commit: ${commitMode})`);
+    lib_core.info(`Mounting sticky disk at ${stickyDiskPath} with key ${stickyDiskKey} (commit: ${commitMode})`);
     try {
         const controller = new AbortController();
         try {
             ({ device, exposeId, wasFormatted } = await mountStickyDisk(stickyDiskKey, commitIntent, stickyDiskPath, controller.signal, controller));
-            (0,core.saveState)("STICKYDISK_EXPOSE_ID", exposeId);
-            (0,core.saveState)("STICKYDISK_WAS_FORMATTED", wasFormatted ? "true" : "false");
-            core.debug(`Sticky disk mounted to ${device}, expose ID: ${exposeId}, freshly formatted: ${wasFormatted}`);
+            (0,lib_core.saveState)("STICKYDISK_EXPOSE_ID", exposeId);
+            (0,lib_core.saveState)("STICKYDISK_WAS_FORMATTED", wasFormatted ? "true" : "false");
+            lib_core.debug(`Sticky disk mounted to ${device}, expose ID: ${exposeId}, freshly formatted: ${wasFormatted}`);
         }
         catch (error) {
             if (error instanceof Error && error.name === "AbortError") {
-                core.warning("Request to get sticky disk timed out");
+                lib_core.warning("Request to get sticky disk timed out");
             }
             throw error;
         }
@@ -36726,22 +36844,25 @@ async function run() {
     catch (error) {
         if (error instanceof Error) {
             stickyDiskError = error;
-            (0,core.saveState)("STICKYDISK_ERROR", "true");
+            (0,lib_core.saveState)("STICKYDISK_ERROR", "true");
         }
     }
     if (stickyDiskError) {
-        core.warning(`Error getting sticky disk: ${stickyDiskError}`);
+        lib_core.warning(`Error getting sticky disk: ${stickyDiskError}`);
         // Degrade gracefully: make sure the requested path exists as an empty,
         // writable directory so downstream steps behave as if this were a fresh
         // sticky disk (a cache miss) rather than failing on a missing path.
         await ensureFallbackDirectory(stickyDiskPath);
     }
+    if (goCaching) {
+        await setupGoCaches(stickyDiskPath);
+    }
     // Record initial disk usage after mount for on-change detection
     if (!stickyDiskError && commitIntent === stickydisk_pb_CommitIntent.ON_CHANGE) {
         const initialUsage = await getInitialDiskUsage(stickyDiskPath);
         if (initialUsage) {
-            (0,core.saveState)("STICKYDISK_INITIAL_USAGE_BYTES", initialUsage);
-            core.debug(`Recorded initial disk usage: ${initialUsage} bytes`);
+            (0,lib_core.saveState)("STICKYDISK_INITIAL_USAGE_BYTES", initialUsage);
+            lib_core.debug(`Recorded initial disk usage: ${initialUsage} bytes`);
         }
     }
 }

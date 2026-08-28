@@ -71,7 +71,7 @@ Blacksmith natively supports [Bazel remote caching](https://docs.blacksmith.sh/b
 
 ## Go Build and Module Cache
 
-Go projects benefit from persistent build and module caches, especially for large codebases with many dependencies.
+Go projects benefit from persistent build and module caches, especially for large codebases with many dependencies. The `go-caching` option configures a single sticky disk to hold both caches: it exports `GOCACHE` and `GOMODCACHE` pointing at subdirectories of the mount path for all subsequent steps, and after the job wipes either cache if it has grown past its size limit so the committed snapshot stays bounded.
 
 ```yaml
 jobs:
@@ -80,28 +80,53 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Mount Go Caches
+        uses: useblacksmith/stickydisk@v1
+        with:
+          key: ${{ github.repository }}-go-cache-${{ runner.os }}
+          path: /mnt/go-cache
+          go-caching: true
+
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version: "1.22"
-
-      - name: Mount Go Build Cache
-        uses: useblacksmith/stickydisk@v1
-        with:
-          key: ${{ github.repository }}-go-build-cache-${{ runner.os }}
-          path: ~/.cache/go-build
-
-      - name: Mount Go Module Cache
-        uses: useblacksmith/stickydisk@v1
-        with:
-          key: ${{ github.repository }}-go-mod-cache-${{ runner.os }}
-          path: ~/go/pkg/mod
+          cache: false # the sticky disk handles caching
 
       - name: Build
         run: go build ./...
 
       - name: Test
         run: go test ./...
+```
+
+The size limits default to 10 GiB for the build cache and 5 GiB for the module cache, and can be tuned with `go-build-cache-limit-gb` and `go-mod-cache-limit-gb` (set to `0` to disable trimming):
+
+```yaml
+- name: Mount Go Caches
+  uses: useblacksmith/stickydisk@v1
+  with:
+    key: ${{ github.repository }}-go-cache-${{ runner.os }}
+    path: /mnt/go-cache
+    go-caching: true
+    go-build-cache-limit-gb: 67
+    go-mod-cache-limit-gb: 9
+```
+
+Alternatively, you can mount separate sticky disks directly at Go's default cache locations without `go-caching`:
+
+```yaml
+- name: Mount Go Build Cache
+  uses: useblacksmith/stickydisk@v1
+  with:
+    key: ${{ github.repository }}-go-build-cache-${{ runner.os }}
+    path: ~/.cache/go-build
+
+- name: Mount Go Module Cache
+  uses: useblacksmith/stickydisk@v1
+  with:
+    key: ${{ github.repository }}-go-mod-cache-${{ runner.os }}
+    path: ~/go/pkg/mod
 ```
 
 ## Turborepo Cache

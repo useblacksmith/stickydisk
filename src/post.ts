@@ -5,6 +5,11 @@ import { getState } from "@actions/core";
 import { createStickyDiskClient } from "./utils";
 import { CommitIntent, commitIntentFromMode } from "./commit-intent";
 import { checkPreviousStepFailures } from "./step-checker";
+import {
+  DEFAULT_GO_BUILD_CACHE_LIMIT_GB,
+  DEFAULT_GO_MOD_CACHE_LIMIT_GB,
+  trimGoCaches,
+} from "./go-cache";
 
 const execAsync = promisify(exec);
 
@@ -241,6 +246,7 @@ async function run(): Promise<void> {
   const initialUsageBytesStr = getState("STICKYDISK_INITIAL_USAGE_BYTES");
   const wasFormatted = getState("STICKYDISK_WAS_FORMATTED");
   const stickyDiskError = getState("STICKYDISK_ERROR") === "true";
+  const goCaching = getState("STICKYDISK_GO_CACHING") === "true";
 
   if (!stickyDiskPath) {
     core.debug("No STICKYDISK_PATH in state, skipping unmount");
@@ -278,6 +284,20 @@ async function run(): Promise<void> {
       // grep returns non-zero if no match found
       logNotMounted();
       return;
+    }
+
+    // Trim oversized Go caches while the disk is still mounted so the
+    // committed snapshot stays bounded.
+    if (goCaching) {
+      const buildLimitGb = parseFloat(
+        getState("STICKYDISK_GO_BUILD_CACHE_LIMIT_GB") ||
+          String(DEFAULT_GO_BUILD_CACHE_LIMIT_GB),
+      );
+      const modLimitGb = parseFloat(
+        getState("STICKYDISK_GO_MOD_CACHE_LIMIT_GB") ||
+          String(DEFAULT_GO_MOD_CACHE_LIMIT_GB),
+      );
+      await trimGoCaches(stickyDiskPath, buildLimitGb, modLimitGb);
     }
 
     // Ensure all pending writes are flushed to disk before collecting usage.
