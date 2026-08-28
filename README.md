@@ -71,7 +71,7 @@ Blacksmith natively supports [Bazel remote caching](https://docs.blacksmith.sh/b
 
 ## Go Build and Module Cache
 
-Go projects benefit from persistent build and module caches, especially for large codebases with many dependencies. The `go-caching` option configures a single sticky disk to hold both caches: it exports `GOCACHE` and `GOMODCACHE` pointing at subdirectories of the mount path for all subsequent steps, and after the job trims either cache if it has grown past its size limit so the committed snapshot stays bounded (least-recently-used entries are evicted from the build cache; the module cache is wiped since its entries carry no usage signal). The limits default to 50 GiB for the build cache and 15 GiB for the module cache, and can be tuned with `go-build-cache-limit-gb` and `go-mod-cache-limit-gb` (set to `0` to disable trimming).
+Go projects benefit from persistent build and module caches, especially for large codebases with many dependencies. The `useblacksmith/stickydisk/go` action configures a single sticky disk to hold both caches: it exports `GOCACHE` and `GOMODCACHE` pointing at subdirectories of the mount path for all subsequent steps, and after the job trims either cache if it has grown past its size limit so the committed snapshot stays bounded (least-recently-used entries are evicted from the build cache; the module cache is wiped since its entries carry no usage signal). The limits default to 50 GiB for the build cache and 15 GiB for the module cache, and can be tuned with `build-cache-limit-gb` and `mod-cache-limit-gb` (set to `0` to disable trimming). The sticky disk key defaults to `<repository>-go-cache-<os>` and the mount path to `/mnt/go-cache`; both can be overridden with the `key` and `path` inputs.
 
 ```yaml
 jobs:
@@ -81,13 +81,10 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Mount Go Caches
-        uses: useblacksmith/stickydisk@v1
+        uses: useblacksmith/stickydisk/go@v1
         with:
-          key: ${{ github.repository }}-go-cache-${{ runner.os }}
-          path: /mnt/go-cache
-          go-caching: true
-          go-build-cache-limit-gb: 50 # optional
-          go-mod-cache-limit-gb: 15 # optional
+          build-cache-limit-gb: 50 # optional
+          mod-cache-limit-gb: 15 # optional
 
       - name: Setup Go
         uses: actions/setup-go@v5

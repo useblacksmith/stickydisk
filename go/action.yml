@@ -1,0 +1,39 @@
+name: "Blacksmith Sticky Disk for Go"
+author: Aditya Maru
+description: "Persistent Go build and module caches on a Blacksmith sticky disk"
+branding:
+  icon: folder-plus
+  color: black
+inputs:
+  key:
+    description: "A unique key to identify the sticky disk. Defaults to '<repository>-go-cache-<os>'."
+    required: false
+    default: ""
+  path:
+    description: "The path at which to mount the sticky disk holding the Go caches."
+    required: false
+    default: "/mnt/go-cache"
+  commit:
+    description: "Controls whether the disk is committed (snapshotted) after the job. 'true' always commits (default), 'false' never commits (read-only consumers), 'on-change' only commits if filesystem content changed since mount, 'if-missing' only commits if no prior snapshot existed (the disk was freshly formatted)."
+    required: false
+    default: "true"
+  build-cache-limit-gb:
+    description: "Maximum size in GiB of the Go build cache (GOCACHE). When exceeded, least-recently-used entries are evicted after the job until the cache fits. Set to 0 to disable trimming."
+    required: false
+    default: "50"
+  mod-cache-limit-gb:
+    description: "Maximum size in GiB of the Go module cache (GOMODCACHE) before it is wiped after the job (module cache entries carry no usage signal, so it is cleared wholesale). Set to 0 to disable trimming."
+    required: false
+    default: "15"
+runs:
+  using: "composite"
+  steps:
+    - name: Mount Go cache sticky disk
+      uses: useblacksmith/stickydisk@v1
+      with:
+        key: ${{ inputs.key != '' && inputs.key || format('{0}-go-cache-{1}', github.repository, runner.os) }}
+        path: ${{ inputs.path }}
+        commit: ${{ inputs.commit }}
+        go-caching: "true"
+        go-build-cache-limit-gb: ${{ inputs.build-cache-limit-gb }}
+        go-mod-cache-limit-gb: ${{ inputs.mod-cache-limit-gb }}
