@@ -86,6 +86,8 @@ jobs:
           key: ${{ github.repository }}-go-cache-${{ runner.os }}
           path: /mnt/go-cache
           go-caching: true
+          go-build-cache-limit-gb: 50 # optional
+          go-mod-cache-limit-gb: 15 # optional
 
       - name: Setup Go
         uses: actions/setup-go@v5
