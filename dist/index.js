@@ -403,7 +403,7 @@ var require_tunnel = __commonJS({
         connectOptions.headers = connectOptions.headers || {};
         connectOptions.headers["Proxy-Authorization"] = "Basic " + new Buffer(connectOptions.proxyAuth).toString("base64");
       }
-      debug2("making CONNECT request");
+      debug3("making CONNECT request");
       var connectReq = self.request(connectOptions);
       connectReq.useChunkedEncodingByDefault = false;
       connectReq.once("response", onResponse);
@@ -423,7 +423,7 @@ var require_tunnel = __commonJS({
         connectReq.removeAllListeners();
         socket.removeAllListeners();
         if (res.statusCode !== 200) {
-          debug2(
+          debug3(
             "tunneling socket could not be established, statusCode=%d",
             res.statusCode
           );
@@ -435,7 +435,7 @@ var require_tunnel = __commonJS({
           return;
         }
         if (head.length > 0) {
-          debug2("got illegal response body from proxy");
+          debug3("got illegal response body from proxy");
           socket.destroy();
           var error2 = new Error("got illegal response body from proxy");
           error2.code = "ECONNRESET";
@@ -443,13 +443,13 @@ var require_tunnel = __commonJS({
           self.removeSocket(placeholder);
           return;
         }
-        debug2("tunneling connection has established");
+        debug3("tunneling connection has established");
         self.sockets[self.sockets.indexOf(placeholder)] = socket;
         return cb(socket);
       }
       function onError(cause) {
         connectReq.removeAllListeners();
-        debug2(
+        debug3(
           "tunneling socket could not be established, cause=%s\n",
           cause.message,
           cause.stack
@@ -511,9 +511,9 @@ var require_tunnel = __commonJS({
       }
       return target;
     }
-    var debug2;
+    var debug3;
     if (process.env.NODE_DEBUG && /\btunnel\b/.test(process.env.NODE_DEBUG)) {
-      debug2 = function() {
+      debug3 = function() {
         var args = Array.prototype.slice.call(arguments);
         if (typeof args[0] === "string") {
           args[0] = "TUNNEL: " + args[0];
@@ -523,10 +523,10 @@ var require_tunnel = __commonJS({
         console.error.apply(console, args);
       };
     } else {
-      debug2 = function() {
+      debug3 = function() {
       };
     }
-    exports.debug = debug2;
+    exports.debug = debug3;
   }
 });
 
@@ -1001,14 +1001,14 @@ var require_util = __commonJS({
         }
         const port = url.port != null ? url.port : url.protocol === "https:" ? 443 : 80;
         let origin = url.origin != null ? url.origin : `${url.protocol}//${url.hostname}:${port}`;
-        let path3 = url.path != null ? url.path : `${url.pathname || ""}${url.search || ""}`;
+        let path4 = url.path != null ? url.path : `${url.pathname || ""}${url.search || ""}`;
         if (origin.endsWith("/")) {
           origin = origin.substring(0, origin.length - 1);
         }
-        if (path3 && !path3.startsWith("/")) {
-          path3 = `/${path3}`;
+        if (path4 && !path4.startsWith("/")) {
+          path4 = `/${path4}`;
         }
-        url = new URL(origin + path3);
+        url = new URL(origin + path4);
       }
       return url;
     }
@@ -2622,20 +2622,20 @@ var require_parseParams = __commonJS({
 var require_basename = __commonJS({
   "node_modules/@fastify/busboy/lib/utils/basename.js"(exports, module) {
     "use strict";
-    module.exports = function basename(path3) {
-      if (typeof path3 !== "string") {
+    module.exports = function basename(path4) {
+      if (typeof path4 !== "string") {
         return "";
       }
-      for (var i = path3.length - 1; i >= 0; --i) {
-        switch (path3.charCodeAt(i)) {
+      for (var i = path4.length - 1; i >= 0; --i) {
+        switch (path4.charCodeAt(i)) {
           case 47:
           // '/'
           case 92:
-            path3 = path3.slice(i + 1);
-            return path3 === ".." || path3 === "." ? "" : path3;
+            path4 = path4.slice(i + 1);
+            return path4 === ".." || path4 === "." ? "" : path4;
         }
       }
-      return path3 === ".." || path3 === "." ? "" : path3;
+      return path4 === ".." || path4 === "." ? "" : path4;
     };
   }
 });
@@ -5658,7 +5658,7 @@ var require_request = __commonJS({
     }
     var Request = class _Request {
       constructor(origin, {
-        path: path3,
+        path: path4,
         method,
         body,
         headers,
@@ -5672,11 +5672,11 @@ var require_request = __commonJS({
         throwOnError,
         expectContinue
       }, handler) {
-        if (typeof path3 !== "string") {
+        if (typeof path4 !== "string") {
           throw new InvalidArgumentError("path must be a string");
-        } else if (path3[0] !== "/" && !(path3.startsWith("http://") || path3.startsWith("https://")) && method !== "CONNECT") {
+        } else if (path4[0] !== "/" && !(path4.startsWith("http://") || path4.startsWith("https://")) && method !== "CONNECT") {
           throw new InvalidArgumentError("path must be an absolute URL or start with a slash");
-        } else if (invalidPathRegex.exec(path3) !== null) {
+        } else if (invalidPathRegex.exec(path4) !== null) {
           throw new InvalidArgumentError("invalid request path");
         }
         if (typeof method !== "string") {
@@ -5739,7 +5739,7 @@ var require_request = __commonJS({
         this.completed = false;
         this.aborted = false;
         this.upgrade = upgrade || null;
-        this.path = query ? util.buildURL(path3, query) : path3;
+        this.path = query ? util.buildURL(path4, query) : path4;
         this.origin = origin;
         this.idempotent = idempotent == null ? method === "HEAD" || method === "GET" : idempotent;
         this.blocking = blocking == null ? false : blocking;
@@ -6747,9 +6747,9 @@ var require_RedirectHandler = __commonJS({
           return this.handler.onHeaders(statusCode, headers, resume, statusText);
         }
         const { origin, pathname, search } = util.parseURL(new URL(this.location, this.opts.origin && new URL(this.opts.path, this.opts.origin)));
-        const path3 = search ? `${pathname}${search}` : pathname;
+        const path4 = search ? `${pathname}${search}` : pathname;
         this.opts.headers = cleanRequestHeaders(this.opts.headers, statusCode === 303, this.opts.origin !== origin);
-        this.opts.path = path3;
+        this.opts.path = path4;
         this.opts.origin = origin;
         this.opts.maxRedirections = 0;
         this.opts.query = null;
@@ -7989,7 +7989,7 @@ var require_client = __commonJS({
         writeH2(client, client[kHTTP2Session], request3);
         return;
       }
-      const { body, method, path: path3, host, upgrade, headers, blocking, reset } = request3;
+      const { body, method, path: path4, host, upgrade, headers, blocking, reset } = request3;
       const expectsPayload = method === "PUT" || method === "POST" || method === "PATCH";
       if (body && typeof body.read === "function") {
         body.read(0);
@@ -8039,7 +8039,7 @@ var require_client = __commonJS({
       if (blocking) {
         socket[kBlocking] = true;
       }
-      let header = `${method} ${path3} HTTP/1.1\r
+      let header = `${method} ${path4} HTTP/1.1\r
 `;
       if (typeof host === "string") {
         header += `host: ${host}\r
@@ -8102,7 +8102,7 @@ upgrade: ${upgrade}\r
       return true;
     }
     function writeH2(client, session, request3) {
-      const { body, method, path: path3, host, upgrade, expectContinue, signal, headers: reqHeaders } = request3;
+      const { body, method, path: path4, host, upgrade, expectContinue, signal, headers: reqHeaders } = request3;
       let headers;
       if (typeof reqHeaders === "string") headers = Request[kHTTP2CopyHeaders](reqHeaders.trim());
       else headers = reqHeaders;
@@ -8145,7 +8145,7 @@ upgrade: ${upgrade}\r
         });
         return true;
       }
-      headers[HTTP2_HEADER_PATH] = path3;
+      headers[HTTP2_HEADER_PATH] = path4;
       headers[HTTP2_HEADER_SCHEME] = "https";
       const expectsPayload = method === "PUT" || method === "POST" || method === "PATCH";
       if (body && typeof body.read === "function") {
@@ -10377,20 +10377,20 @@ var require_mock_utils = __commonJS({
       }
       return true;
     }
-    function safeUrl(path3) {
-      if (typeof path3 !== "string") {
-        return path3;
+    function safeUrl(path4) {
+      if (typeof path4 !== "string") {
+        return path4;
       }
-      const pathSegments = path3.split("?");
+      const pathSegments = path4.split("?");
       if (pathSegments.length !== 2) {
-        return path3;
+        return path4;
       }
       const qp = new URLSearchParams(pathSegments.pop());
       qp.sort();
       return [...pathSegments, qp.toString()].join("?");
     }
-    function matchKey(mockDispatch2, { path: path3, method, body, headers }) {
-      const pathMatch = matchValue(mockDispatch2.path, path3);
+    function matchKey(mockDispatch2, { path: path4, method, body, headers }) {
+      const pathMatch = matchValue(mockDispatch2.path, path4);
       const methodMatch = matchValue(mockDispatch2.method, method);
       const bodyMatch = typeof mockDispatch2.body !== "undefined" ? matchValue(mockDispatch2.body, body) : true;
       const headersMatch = matchHeaders(mockDispatch2, headers);
@@ -10408,7 +10408,7 @@ var require_mock_utils = __commonJS({
     function getMockDispatch(mockDispatches, key) {
       const basePath = key.query ? buildURL(key.path, key.query) : key.path;
       const resolvedPath = typeof basePath === "string" ? safeUrl(basePath) : basePath;
-      let matchedMockDispatches = mockDispatches.filter(({ consumed }) => !consumed).filter(({ path: path3 }) => matchValue(safeUrl(path3), resolvedPath));
+      let matchedMockDispatches = mockDispatches.filter(({ consumed }) => !consumed).filter(({ path: path4 }) => matchValue(safeUrl(path4), resolvedPath));
       if (matchedMockDispatches.length === 0) {
         throw new MockNotMatchedError(`Mock dispatch not matched for path '${resolvedPath}'`);
       }
@@ -10445,9 +10445,9 @@ var require_mock_utils = __commonJS({
       }
     }
     function buildKey(opts) {
-      const { path: path3, method, body, headers, query } = opts;
+      const { path: path4, method, body, headers, query } = opts;
       return {
-        path: path3,
+        path: path4,
         method,
         body,
         headers,
@@ -10741,7 +10741,7 @@ var require_mock_interceptor = __commonJS({
 var require_mock_client = __commonJS({
   "node_modules/undici/lib/mock/mock-client.js"(exports, module) {
     "use strict";
-    var { promisify: promisify3 } = __require("util");
+    var { promisify: promisify4 } = __require("util");
     var Client = require_client();
     var { buildMockDispatch } = require_mock_utils();
     var {
@@ -10781,7 +10781,7 @@ var require_mock_client = __commonJS({
         return new MockInterceptor(opts, this[kDispatches]);
       }
       async [kClose]() {
-        await promisify3(this[kOriginalClose])();
+        await promisify4(this[kOriginalClose])();
         this[kConnected] = 0;
         this[kMockAgent][Symbols.kClients].delete(this[kOrigin]);
       }
@@ -10794,7 +10794,7 @@ var require_mock_client = __commonJS({
 var require_mock_pool = __commonJS({
   "node_modules/undici/lib/mock/mock-pool.js"(exports, module) {
     "use strict";
-    var { promisify: promisify3 } = __require("util");
+    var { promisify: promisify4 } = __require("util");
     var Pool = require_pool();
     var { buildMockDispatch } = require_mock_utils();
     var {
@@ -10834,7 +10834,7 @@ var require_mock_pool = __commonJS({
         return new MockInterceptor(opts, this[kDispatches]);
       }
       async [kClose]() {
-        await promisify3(this[kOriginalClose])();
+        await promisify4(this[kOriginalClose])();
         this[kConnected] = 0;
         this[kMockAgent][Symbols.kClients].delete(this[kOrigin]);
       }
@@ -10896,10 +10896,10 @@ var require_pending_interceptors_formatter = __commonJS({
       }
       format(pendingInterceptors) {
         const withPrettyHeaders = pendingInterceptors.map(
-          ({ method, path: path3, data: { statusCode }, persist, times, timesInvoked, origin }) => ({
+          ({ method, path: path4, data: { statusCode }, persist, times, timesInvoked, origin }) => ({
             Method: method,
             Origin: origin,
-            Path: path3,
+            Path: path4,
             "Status code": statusCode,
             Persistent: persist ? "\u2705" : "\u274C",
             Invocations: timesInvoked,
@@ -15517,8 +15517,8 @@ var require_util6 = __commonJS({
         }
       }
     }
-    function validateCookiePath(path3) {
-      for (const char of path3) {
+    function validateCookiePath(path4) {
+      for (const char of path4) {
         const code = char.charCodeAt(0);
         if (code < 33 || char === ";") {
           throw new Error("Invalid cookie path");
@@ -17210,11 +17210,11 @@ var require_undici = __commonJS({
           if (typeof opts.path !== "string") {
             throw new InvalidArgumentError("invalid opts.path");
           }
-          let path3 = opts.path;
+          let path4 = opts.path;
           if (!opts.path.startsWith("/")) {
-            path3 = `/${path3}`;
+            path4 = `/${path4}`;
           }
-          url = new URL(util.parseOrigin(url).origin + path3);
+          url = new URL(util.parseOrigin(url).origin + path4);
         } else {
           if (!opts) {
             opts = typeof url === "object" ? url : {};
@@ -17586,12 +17586,12 @@ var require_lib = __commonJS({
             throw new Error("Client has already been disposed.");
           }
           const parsedUrl = new URL(requestUrl);
-          let info3 = this._prepareRequest(verb, parsedUrl, headers);
+          let info4 = this._prepareRequest(verb, parsedUrl, headers);
           const maxTries = this._allowRetries && RetryableHttpVerbs.includes(verb) ? this._maxRetries + 1 : 1;
           let numTries = 0;
           let response;
           do {
-            response = yield this.requestRaw(info3, data);
+            response = yield this.requestRaw(info4, data);
             if (response && response.message && response.message.statusCode === HttpCodes.Unauthorized) {
               let authenticationHandler;
               for (const handler of this.handlers) {
@@ -17601,7 +17601,7 @@ var require_lib = __commonJS({
                 }
               }
               if (authenticationHandler) {
-                return authenticationHandler.handleAuthentication(this, info3, data);
+                return authenticationHandler.handleAuthentication(this, info4, data);
               } else {
                 return response;
               }
@@ -17624,8 +17624,8 @@ var require_lib = __commonJS({
                   }
                 }
               }
-              info3 = this._prepareRequest(verb, parsedRedirectUrl, headers);
-              response = yield this.requestRaw(info3, data);
+              info4 = this._prepareRequest(verb, parsedRedirectUrl, headers);
+              response = yield this.requestRaw(info4, data);
               redirectsRemaining--;
             }
             if (!response.message.statusCode || !HttpResponseRetryCodes.includes(response.message.statusCode)) {
@@ -17654,7 +17654,7 @@ var require_lib = __commonJS({
        * @param info
        * @param data
        */
-      requestRaw(info3, data) {
+      requestRaw(info4, data) {
         return __awaiter(this, void 0, void 0, function* () {
           return new Promise((resolve2, reject) => {
             function callbackForResult(err, res) {
@@ -17666,7 +17666,7 @@ var require_lib = __commonJS({
                 resolve2(res);
               }
             }
-            this.requestRawWithCallback(info3, data, callbackForResult);
+            this.requestRawWithCallback(info4, data, callbackForResult);
           });
         });
       }
@@ -17676,12 +17676,12 @@ var require_lib = __commonJS({
        * @param data
        * @param onResult
        */
-      requestRawWithCallback(info3, data, onResult) {
+      requestRawWithCallback(info4, data, onResult) {
         if (typeof data === "string") {
-          if (!info3.options.headers) {
-            info3.options.headers = {};
+          if (!info4.options.headers) {
+            info4.options.headers = {};
           }
-          info3.options.headers["Content-Length"] = Buffer.byteLength(data, "utf8");
+          info4.options.headers["Content-Length"] = Buffer.byteLength(data, "utf8");
         }
         let callbackCalled = false;
         function handleResult(err, res) {
@@ -17690,7 +17690,7 @@ var require_lib = __commonJS({
             onResult(err, res);
           }
         }
-        const req = info3.httpModule.request(info3.options, (msg) => {
+        const req = info4.httpModule.request(info4.options, (msg) => {
           const res = new HttpClientResponse(msg);
           handleResult(void 0, res);
         });
@@ -17702,7 +17702,7 @@ var require_lib = __commonJS({
           if (socket) {
             socket.end();
           }
-          handleResult(new Error(`Request timeout: ${info3.options.path}`));
+          handleResult(new Error(`Request timeout: ${info4.options.path}`));
         });
         req.on("error", function(err) {
           handleResult(err);
@@ -17738,27 +17738,27 @@ var require_lib = __commonJS({
         return this._getProxyAgentDispatcher(parsedUrl, proxyUrl);
       }
       _prepareRequest(method, requestUrl, headers) {
-        const info3 = {};
-        info3.parsedUrl = requestUrl;
-        const usingSsl = info3.parsedUrl.protocol === "https:";
-        info3.httpModule = usingSsl ? https2 : http3;
+        const info4 = {};
+        info4.parsedUrl = requestUrl;
+        const usingSsl = info4.parsedUrl.protocol === "https:";
+        info4.httpModule = usingSsl ? https2 : http3;
         const defaultPort = usingSsl ? 443 : 80;
-        info3.options = {};
-        info3.options.host = info3.parsedUrl.hostname;
-        info3.options.port = info3.parsedUrl.port ? parseInt(info3.parsedUrl.port) : defaultPort;
-        info3.options.path = (info3.parsedUrl.pathname || "") + (info3.parsedUrl.search || "");
-        info3.options.method = method;
-        info3.options.headers = this._mergeHeaders(headers);
+        info4.options = {};
+        info4.options.host = info4.parsedUrl.hostname;
+        info4.options.port = info4.parsedUrl.port ? parseInt(info4.parsedUrl.port) : defaultPort;
+        info4.options.path = (info4.parsedUrl.pathname || "") + (info4.parsedUrl.search || "");
+        info4.options.method = method;
+        info4.options.headers = this._mergeHeaders(headers);
         if (this.userAgent != null) {
-          info3.options.headers["user-agent"] = this.userAgent;
+          info4.options.headers["user-agent"] = this.userAgent;
         }
-        info3.options.agent = this._getAgent(info3.parsedUrl);
+        info4.options.agent = this._getAgent(info4.parsedUrl);
         if (this.handlers) {
           for (const handler of this.handlers) {
-            handler.prepareRequest(info3.options);
+            handler.prepareRequest(info4.options);
           }
         }
-        return info3;
+        return info4;
       }
       _mergeHeaders(headers) {
         if (this.requestOptions && this.requestOptions.headers) {
@@ -18437,7 +18437,7 @@ var require_path_utils = __commonJS({
     };
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.toPlatformPath = exports.toWin32Path = exports.toPosixPath = void 0;
-    var path3 = __importStar(__require("path"));
+    var path4 = __importStar(__require("path"));
     function toPosixPath(pth) {
       return pth.replace(/[\\]/g, "/");
     }
@@ -18447,7 +18447,7 @@ var require_path_utils = __commonJS({
     }
     exports.toWin32Path = toWin32Path;
     function toPlatformPath(pth) {
-      return pth.replace(/[/\\]/g, path3.sep);
+      return pth.replace(/[/\\]/g, path4.sep);
     }
     exports.toPlatformPath = toPlatformPath;
   }
@@ -18511,7 +18511,7 @@ var require_io_util = __commonJS({
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.getCmdPath = exports.tryGetExecutablePath = exports.isRooted = exports.isDirectory = exports.exists = exports.READONLY = exports.UV_FS_O_EXLOCK = exports.IS_WINDOWS = exports.unlink = exports.symlink = exports.stat = exports.rmdir = exports.rm = exports.rename = exports.readlink = exports.readdir = exports.open = exports.mkdir = exports.lstat = exports.copyFile = exports.chmod = void 0;
     var fs = __importStar(__require("fs"));
-    var path3 = __importStar(__require("path"));
+    var path4 = __importStar(__require("path"));
     _a = fs.promises, exports.chmod = _a.chmod, exports.copyFile = _a.copyFile, exports.lstat = _a.lstat, exports.mkdir = _a.mkdir, exports.open = _a.open, exports.readdir = _a.readdir, exports.readlink = _a.readlink, exports.rename = _a.rename, exports.rm = _a.rm, exports.rmdir = _a.rmdir, exports.stat = _a.stat, exports.symlink = _a.symlink, exports.unlink = _a.unlink;
     exports.IS_WINDOWS = process.platform === "win32";
     exports.UV_FS_O_EXLOCK = 268435456;
@@ -18560,7 +18560,7 @@ var require_io_util = __commonJS({
         }
         if (stats && stats.isFile()) {
           if (exports.IS_WINDOWS) {
-            const upperExt = path3.extname(filePath).toUpperCase();
+            const upperExt = path4.extname(filePath).toUpperCase();
             if (extensions.some((validExt) => validExt.toUpperCase() === upperExt)) {
               return filePath;
             }
@@ -18584,11 +18584,11 @@ var require_io_util = __commonJS({
           if (stats && stats.isFile()) {
             if (exports.IS_WINDOWS) {
               try {
-                const directory = path3.dirname(filePath);
-                const upperName = path3.basename(filePath).toUpperCase();
+                const directory = path4.dirname(filePath);
+                const upperName = path4.basename(filePath).toUpperCase();
                 for (const actualName of yield exports.readdir(directory)) {
                   if (upperName === actualName.toUpperCase()) {
-                    filePath = path3.join(directory, actualName);
+                    filePath = path4.join(directory, actualName);
                     break;
                   }
                 }
@@ -18683,7 +18683,7 @@ var require_io = __commonJS({
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.findInPath = exports.which = exports.mkdirP = exports.rmRF = exports.mv = exports.cp = void 0;
     var assert_1 = __require("assert");
-    var path3 = __importStar(__require("path"));
+    var path4 = __importStar(__require("path"));
     var ioUtil = __importStar(require_io_util());
     function cp(source, dest, options = {}) {
       return __awaiter(this, void 0, void 0, function* () {
@@ -18692,7 +18692,7 @@ var require_io = __commonJS({
         if (destStat && destStat.isFile() && !force) {
           return;
         }
-        const newDest = destStat && destStat.isDirectory() && copySourceDirectory ? path3.join(dest, path3.basename(source)) : dest;
+        const newDest = destStat && destStat.isDirectory() && copySourceDirectory ? path4.join(dest, path4.basename(source)) : dest;
         if (!(yield ioUtil.exists(source))) {
           throw new Error(`no such file or directory: ${source}`);
         }
@@ -18704,7 +18704,7 @@ var require_io = __commonJS({
             yield cpDirRecursive(source, newDest, 0, force);
           }
         } else {
-          if (path3.relative(source, newDest) === "") {
+          if (path4.relative(source, newDest) === "") {
             throw new Error(`'${newDest}' and '${source}' are the same file`);
           }
           yield copyFile(source, newDest, force);
@@ -18717,7 +18717,7 @@ var require_io = __commonJS({
         if (yield ioUtil.exists(dest)) {
           let destExists = true;
           if (yield ioUtil.isDirectory(dest)) {
-            dest = path3.join(dest, path3.basename(source));
+            dest = path4.join(dest, path4.basename(source));
             destExists = yield ioUtil.exists(dest);
           }
           if (destExists) {
@@ -18728,7 +18728,7 @@ var require_io = __commonJS({
             }
           }
         }
-        yield mkdirP(path3.dirname(dest));
+        yield mkdirP(path4.dirname(dest));
         yield ioUtil.rename(source, dest);
       });
     }
@@ -18791,7 +18791,7 @@ var require_io = __commonJS({
         }
         const extensions = [];
         if (ioUtil.IS_WINDOWS && process.env["PATHEXT"]) {
-          for (const extension of process.env["PATHEXT"].split(path3.delimiter)) {
+          for (const extension of process.env["PATHEXT"].split(path4.delimiter)) {
             if (extension) {
               extensions.push(extension);
             }
@@ -18804,12 +18804,12 @@ var require_io = __commonJS({
           }
           return [];
         }
-        if (tool.includes(path3.sep)) {
+        if (tool.includes(path4.sep)) {
           return [];
         }
         const directories = [];
         if (process.env.PATH) {
-          for (const p of process.env.PATH.split(path3.delimiter)) {
+          for (const p of process.env.PATH.split(path4.delimiter)) {
             if (p) {
               directories.push(p);
             }
@@ -18817,7 +18817,7 @@ var require_io = __commonJS({
         }
         const matches = [];
         for (const directory of directories) {
-          const filePath = yield ioUtil.tryGetExecutablePath(path3.join(directory, tool), extensions);
+          const filePath = yield ioUtil.tryGetExecutablePath(path4.join(directory, tool), extensions);
           if (filePath) {
             matches.push(filePath);
           }
@@ -18933,7 +18933,7 @@ var require_toolrunner = __commonJS({
     var os = __importStar(__require("os"));
     var events = __importStar(__require("events"));
     var child = __importStar(__require("child_process"));
-    var path3 = __importStar(__require("path"));
+    var path4 = __importStar(__require("path"));
     var io = __importStar(require_io());
     var ioUtil = __importStar(require_io_util());
     var timers_1 = __require("timers");
@@ -19148,7 +19148,7 @@ var require_toolrunner = __commonJS({
       exec() {
         return __awaiter(this, void 0, void 0, function* () {
           if (!ioUtil.isRooted(this.toolPath) && (this.toolPath.includes("/") || IS_WINDOWS && this.toolPath.includes("\\"))) {
-            this.toolPath = path3.resolve(process.cwd(), this.options.cwd || process.cwd(), this.toolPath);
+            this.toolPath = path4.resolve(process.cwd(), this.options.cwd || process.cwd(), this.toolPath);
           }
           this.toolPath = yield io.which(this.toolPath, true);
           return new Promise((resolve2, reject) => __awaiter(this, void 0, void 0, function* () {
@@ -19416,7 +19416,7 @@ var require_exec = __commonJS({
     exports.getExecOutput = exports.exec = void 0;
     var string_decoder_1 = __require("string_decoder");
     var tr = __importStar(require_toolrunner());
-    function exec2(commandLine, args, options) {
+    function exec3(commandLine, args, options) {
       return __awaiter(this, void 0, void 0, function* () {
         const commandArgs = tr.argStringToArray(commandLine);
         if (commandArgs.length === 0) {
@@ -19428,7 +19428,7 @@ var require_exec = __commonJS({
         return runner.exec();
       });
     }
-    exports.exec = exec2;
+    exports.exec = exec3;
     function getExecOutput(commandLine, args, options) {
       var _a, _b;
       return __awaiter(this, void 0, void 0, function* () {
@@ -19451,7 +19451,7 @@ var require_exec = __commonJS({
           }
         };
         const listeners = Object.assign(Object.assign({}, options === null || options === void 0 ? void 0 : options.listeners), { stdout: stdOutListener, stderr: stdErrListener });
-        const exitCode = yield exec2(commandLine, args, Object.assign(Object.assign({}, options), { listeners }));
+        const exitCode = yield exec3(commandLine, args, Object.assign(Object.assign({}, options), { listeners }));
         stdout += stdoutDecoder.end();
         stderr += stderrDecoder.end();
         return {
@@ -19529,12 +19529,12 @@ var require_platform = __commonJS({
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.getDetails = exports.isLinux = exports.isMacOS = exports.isWindows = exports.arch = exports.platform = void 0;
     var os_1 = __importDefault(__require("os"));
-    var exec2 = __importStar(require_exec());
+    var exec3 = __importStar(require_exec());
     var getWindowsInfo = () => __awaiter(void 0, void 0, void 0, function* () {
-      const { stdout: version } = yield exec2.getExecOutput('powershell -command "(Get-CimInstance -ClassName Win32_OperatingSystem).Version"', void 0, {
+      const { stdout: version } = yield exec3.getExecOutput('powershell -command "(Get-CimInstance -ClassName Win32_OperatingSystem).Version"', void 0, {
         silent: true
       });
-      const { stdout: name } = yield exec2.getExecOutput('powershell -command "(Get-CimInstance -ClassName Win32_OperatingSystem).Caption"', void 0, {
+      const { stdout: name } = yield exec3.getExecOutput('powershell -command "(Get-CimInstance -ClassName Win32_OperatingSystem).Caption"', void 0, {
         silent: true
       });
       return {
@@ -19544,7 +19544,7 @@ var require_platform = __commonJS({
     });
     var getMacOsInfo = () => __awaiter(void 0, void 0, void 0, function* () {
       var _a, _b, _c, _d;
-      const { stdout } = yield exec2.getExecOutput("sw_vers", void 0, {
+      const { stdout } = yield exec3.getExecOutput("sw_vers", void 0, {
         silent: true
       });
       const version = (_b = (_a = stdout.match(/ProductVersion:\s*(.+)/)) === null || _a === void 0 ? void 0 : _a[1]) !== null && _b !== void 0 ? _b : "";
@@ -19555,7 +19555,7 @@ var require_platform = __commonJS({
       };
     });
     var getLinuxInfo = () => __awaiter(void 0, void 0, void 0, function* () {
-      const { stdout } = yield exec2.getExecOutput("lsb_release", ["-i", "-r", "-s"], {
+      const { stdout } = yield exec3.getExecOutput("lsb_release", ["-i", "-r", "-s"], {
         silent: true
       });
       const [name, version] = stdout.trim().split("\n");
@@ -19648,14 +19648,14 @@ var require_core = __commonJS({
     var file_command_1 = require_file_command();
     var utils_1 = require_utils();
     var os = __importStar(__require("os"));
-    var path3 = __importStar(__require("path"));
+    var path4 = __importStar(__require("path"));
     var oidc_utils_1 = require_oidc_utils();
     var ExitCode;
     (function(ExitCode2) {
       ExitCode2[ExitCode2["Success"] = 0] = "Success";
       ExitCode2[ExitCode2["Failure"] = 1] = "Failure";
     })(ExitCode || (exports.ExitCode = ExitCode = {}));
-    function exportVariable(name, val) {
+    function exportVariable2(name, val) {
       const convertedVal = (0, utils_1.toCommandValue)(val);
       process.env[name] = convertedVal;
       const filePath = process.env["GITHUB_ENV"] || "";
@@ -19664,7 +19664,7 @@ var require_core = __commonJS({
       }
       (0, command_1.issueCommand)("set-env", { name }, convertedVal);
     }
-    exports.exportVariable = exportVariable;
+    exports.exportVariable = exportVariable2;
     function setSecret(secret) {
       (0, command_1.issueCommand)("add-mask", {}, secret);
     }
@@ -19676,7 +19676,7 @@ var require_core = __commonJS({
       } else {
         (0, command_1.issueCommand)("add-path", {}, inputPath);
       }
-      process.env["PATH"] = `${inputPath}${path3.delimiter}${process.env["PATH"]}`;
+      process.env["PATH"] = `${inputPath}${path4.delimiter}${process.env["PATH"]}`;
     }
     exports.addPath = addPath;
     function getInput2(name, options) {
@@ -19732,26 +19732,26 @@ Support boolean input list: \`true | True | TRUE | false | False | FALSE\``);
       return process.env["RUNNER_DEBUG"] === "1";
     }
     exports.isDebug = isDebug;
-    function debug2(message) {
+    function debug3(message) {
       (0, command_1.issueCommand)("debug", {}, message);
     }
-    exports.debug = debug2;
+    exports.debug = debug3;
     function error2(message, properties = {}) {
       (0, command_1.issueCommand)("error", (0, utils_1.toCommandProperties)(properties), message instanceof Error ? message.toString() : message);
     }
     exports.error = error2;
-    function warning2(message, properties = {}) {
+    function warning3(message, properties = {}) {
       (0, command_1.issueCommand)("warning", (0, utils_1.toCommandProperties)(properties), message instanceof Error ? message.toString() : message);
     }
-    exports.warning = warning2;
+    exports.warning = warning3;
     function notice(message, properties = {}) {
       (0, command_1.issueCommand)("notice", (0, utils_1.toCommandProperties)(properties), message instanceof Error ? message.toString() : message);
     }
     exports.notice = notice;
-    function info3(message) {
+    function info4(message) {
       process.stdout.write(message + os.EOL);
     }
-    exports.info = info3;
+    exports.info = info4;
     function startGroup(name) {
       (0, command_1.issue)("group", name);
     }
@@ -19815,10 +19815,10 @@ Support boolean input list: \`true | True | TRUE | false | False | FALSE\``);
 
 // src/mount.ts
 var import_core = __toESM(require_core(), 1);
-var core2 = __toESM(require_core(), 1);
-import { promisify as promisify2 } from "util";
-import { exec } from "child_process";
-import * as path2 from "path";
+var core3 = __toESM(require_core(), 1);
+import { promisify as promisify3 } from "util";
+import { exec as exec2 } from "child_process";
+import * as path3 from "path";
 
 // node_modules/@connectrpc/connect/dist/esm/code.js
 var Code;
@@ -24352,11 +24352,11 @@ var Http2SessionManager = class {
    * Clients must call notifyResponseByteRead() whenever they successfully read
    * data from the http2.ClientHttp2Stream.
    */
-  async request(method, path3, headers, options) {
+  async request(method, path4, headers, options) {
     for (; ; ) {
       const ready2 = await this.gotoReady();
       try {
-        const stream = ready2.conn.request(Object.assign(Object.assign({}, headers), { ":method": method, ":path": path3 }), options);
+        const stream = ready2.conn.request(Object.assign(Object.assign({}, headers), { ":method": method, ":path": path4 }), options);
         ready2.registerRequest(stream);
         return stream;
       } catch (e) {
@@ -25519,6 +25519,12 @@ function commitIntentFromMode(commitMode) {
   }
 }
 
+// src/go-cache.ts
+var core2 = __toESM(require_core(), 1);
+import { promisify as promisify2 } from "util";
+import { exec } from "child_process";
+import * as path2 from "path";
+
 // src/path.ts
 import { homedir } from "os";
 import * as path from "path";
@@ -25548,12 +25554,32 @@ function getWorkspaceLocalParentToChown(mountPath, cwd = process.cwd()) {
   return null;
 }
 
-// src/mount.ts
+// src/go-cache.ts
 var execAsync = promisify2(exec);
+var GO_BUILD_CACHE_SUBDIR = "go/build";
+var GO_MOD_CACHE_SUBDIR = "go/mod";
+function goBuildCachePath(stickyDiskPath) {
+  return path2.join(stickyDiskPath, GO_BUILD_CACHE_SUBDIR);
+}
+function goModCachePath(stickyDiskPath) {
+  return path2.join(stickyDiskPath, GO_MOD_CACHE_SUBDIR);
+}
+async function setupGoCaches(stickyDiskPath) {
+  const buildCache = goBuildCachePath(stickyDiskPath);
+  const modCache = goModCachePath(stickyDiskPath);
+  await execAsync(`mkdir -p ${shellQuote(buildCache)} ${shellQuote(modCache)}`);
+  core2.exportVariable("GOCACHE", buildCache);
+  core2.exportVariable("GOMODCACHE", modCache);
+  core2.info(`Go caching enabled: GOCACHE=${buildCache} GOMODCACHE=${modCache}`);
+}
+var FIND_MAX_BUFFER_BYTES = 1024 * 1024 * 1024;
+
+// src/mount.ts
+var execAsync2 = promisify3(exec2);
 var stickyDiskTimeoutMs = 45e3;
 async function getStickyDisk(stickyDiskKey, commitIntent, options) {
   const client = createStickyDiskClient();
-  core2.debug(`Getting sticky disk for ${stickyDiskKey}`);
+  core3.debug(`Getting sticky disk for ${stickyDiskKey}`);
   const response = await client.getStickyDisk(
     {
       stickyDiskKey,
@@ -25578,7 +25604,7 @@ async function waitForNonZeroDeviceSize(device, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
   for (; ; ) {
     try {
-      const { stdout } = await execAsync(`sudo blockdev --getsize64 ${device}`);
+      const { stdout } = await execAsync2(`sudo blockdev --getsize64 ${device}`);
       const size = parseInt(stdout.trim(), 10);
       if (!isNaN(size) && size > 0) {
         return;
@@ -25596,17 +25622,17 @@ async function waitForNonZeroDeviceSize(device, timeoutMs) {
 async function maybeFormatBlockDevice(device) {
   try {
     try {
-      const { stdout } = await execAsync(
+      const { stdout } = await execAsync2(
         `sudo blkid -o value -s TYPE ${device}`
       );
       if (stdout.trim() === "ext4") {
-        core2.debug(`Device ${device} is already formatted with ext4`);
+        core3.debug(`Device ${device} is already formatted with ext4`);
         try {
-          await execAsync(`sudo resize2fs -f ${device}`);
-          core2.debug(`Resized ext4 filesystem on ${device}`);
+          await execAsync2(`sudo resize2fs -f ${device}`);
+          core3.debug(`Resized ext4 filesystem on ${device}`);
         } catch (error2) {
           if (error2 instanceof Error) {
-            core2.warning(
+            core3.warning(
               `Error resizing ext4 filesystem on ${device}: ${error2}`
             );
           }
@@ -25614,49 +25640,49 @@ async function maybeFormatBlockDevice(device) {
         return { device, wasFormatted: false };
       }
     } catch {
-      core2.debug(`No filesystem found on ${device}, will format it`);
+      core3.debug(`No filesystem found on ${device}, will format it`);
     }
-    core2.debug(`Formatting device ${device} with ext4`);
-    await execAsync(
+    core3.debug(`Formatting device ${device} with ext4`);
+    await execAsync2(
       `sudo mkfs.ext4 -m0 -E root_owner=$(id -u):$(id -g) -Enodiscard,lazy_itable_init=1,lazy_journal_init=1 -F ${device}`
     );
-    core2.debug(`Successfully formatted ${device} with ext4`);
-    core2.debug(`Removing lost+found directory from ${device}`);
+    core3.debug(`Successfully formatted ${device} with ext4`);
+    core3.debug(`Removing lost+found directory from ${device}`);
     const tempMount = `/tmp/stickydisk-init-${Date.now()}`;
     try {
-      await execAsync(`sudo mkdir -p ${tempMount}`);
-      await execAsync(`sudo mount -o noinit_itable ${device} ${tempMount}`);
-      await execAsync(`sudo rm -rf ${tempMount}/lost+found`);
-      await execAsync(`sudo umount ${tempMount}`);
-      await execAsync(`sudo rmdir ${tempMount}`);
-      core2.debug(`Removed lost+found directory from ${device}`);
+      await execAsync2(`sudo mkdir -p ${tempMount}`);
+      await execAsync2(`sudo mount -o noinit_itable ${device} ${tempMount}`);
+      await execAsync2(`sudo rm -rf ${tempMount}/lost+found`);
+      await execAsync2(`sudo umount ${tempMount}`);
+      await execAsync2(`sudo rmdir ${tempMount}`);
+      core3.debug(`Removed lost+found directory from ${device}`);
     } catch (error2) {
-      core2.warning(
+      core3.warning(
         `Failed to remove lost+found directory: ${error2 instanceof Error ? error2.message : String(error2)}`
       );
     }
     return { device, wasFormatted: true };
   } catch (error2) {
     if (error2 instanceof Error) {
-      core2.warning(`Failed to format device ${device}: ${error2}`);
+      core3.warning(`Failed to format device ${device}: ${error2}`);
     }
     throw error2;
   }
 }
 async function createMountPoint(stickyDiskPath) {
-  const parentPath = path2.dirname(stickyDiskPath);
+  const parentPath = path3.dirname(stickyDiskPath);
   try {
-    await execAsync(`mkdir -p ${shellQuote(parentPath)}`);
+    await execAsync2(`mkdir -p ${shellQuote(parentPath)}`);
   } catch (error2) {
-    core2.debug(
+    core3.debug(
       `Could not create mount parent ${parentPath} as current user: ${error2 instanceof Error ? error2.message : String(error2)}`
     );
   }
-  await execAsync(`sudo mkdir -p ${shellQuote(stickyDiskPath)}`);
-  await execAsync(`sudo chown $(id -u):$(id -g) ${shellQuote(stickyDiskPath)}`);
+  await execAsync2(`sudo mkdir -p ${shellQuote(stickyDiskPath)}`);
+  await execAsync2(`sudo chown $(id -u):$(id -g) ${shellQuote(stickyDiskPath)}`);
   const workspaceParentPath = getWorkspaceLocalParentToChown(stickyDiskPath);
   if (workspaceParentPath) {
-    await execAsync(
+    await execAsync2(
       `sudo chown $(id -u):$(id -g) ${shellQuote(workspaceParentPath)}`
     );
   }
@@ -25676,11 +25702,11 @@ async function mountStickyDisk(stickyDiskKey, commitIntent, stickyDiskPath, sign
   await waitForNonZeroDeviceSize(device, 1e4);
   const { wasFormatted } = await maybeFormatBlockDevice(device);
   await createMountPoint(stickyDiskPath);
-  await execAsync(
+  await execAsync2(
     `sudo mount -o noinit_itable ${shellQuote(device)} ${shellQuote(stickyDiskPath)}`
   );
-  await execAsync(`sudo chown $(id -u):$(id -g) ${shellQuote(stickyDiskPath)}`);
-  core2.debug(
+  await execAsync2(`sudo chown $(id -u):$(id -g) ${shellQuote(stickyDiskPath)}`);
+  core3.debug(
     `${device} has been mounted to ${stickyDiskPath} with expose ID ${exposeId}`
   );
   return { device, exposeId, wasFormatted };
@@ -25688,18 +25714,18 @@ async function mountStickyDisk(stickyDiskKey, commitIntent, stickyDiskPath, sign
 async function ensureFallbackDirectory(stickyDiskPath) {
   try {
     await createMountPoint(stickyDiskPath);
-    core2.info(
+    core3.info(
       `Sticky disk unavailable; created empty directory at ${stickyDiskPath} so subsequent steps see a cache miss instead of a missing path`
     );
   } catch (error2) {
-    core2.warning(
+    core3.warning(
       `Failed to create fallback directory at ${stickyDiskPath}: ${error2 instanceof Error ? error2.message : String(error2)}`
     );
   }
 }
 async function getInitialDiskUsage(stickyDiskPath) {
   try {
-    const { stdout } = await execAsync(
+    const { stdout } = await execAsync2(
       `df -B1 --output=used ${shellQuote(stickyDiskPath)} | tail -n1`
     );
     const value = stdout.trim();
@@ -25707,18 +25733,19 @@ async function getInitialDiskUsage(stickyDiskPath) {
       return value;
     }
   } catch (error2) {
-    core2.debug(
+    core3.debug(
       `Could not get initial disk usage: ${error2 instanceof Error ? error2.message : String(error2)}`
     );
   }
   return null;
 }
-async function runMount() {
+async function runMount(options) {
   let stickyDiskError;
   let exposeId;
   let device = "";
   let wasFormatted = false;
-  const stickyDiskKey = (0, import_core.getInput)("key");
+  const { goCaching } = options;
+  const stickyDiskKey = (0, import_core.getInput)("key") || options.defaultKey || "";
   const stickyDiskPath = normalizeMountPath((0, import_core.getInput)("path"));
   const commitMode = (0, import_core.getInput)("commit") || "true";
   const commitIntent = commitIntentFromMode(commitMode);
@@ -25726,13 +25753,16 @@ async function runMount() {
   (0, import_core.saveState)("STICKYDISK_KEY", stickyDiskKey);
   (0, import_core.saveState)("STICKYDISK_COMMIT_MODE", commitMode);
   if (!getAgentEndpoint()) {
-    core2.warning(
+    core3.warning(
       `BLACKSMITH_AGENT_ADDR or BLACKSMITH_STICKY_DISK_GRPC_PORT is not set; sticky disks are unavailable on this runner. Creating ${stickyDiskPath} as a plain directory instead (contents will not persist across runs).`
     );
     await ensureFallbackDirectory(stickyDiskPath);
+    if (goCaching) {
+      await setupGoCaches(stickyDiskPath);
+    }
     return;
   }
-  core2.info(
+  core3.info(
     `Mounting sticky disk at ${stickyDiskPath} with key ${stickyDiskKey} (commit: ${commitMode})`
   );
   try {
@@ -25747,12 +25777,12 @@ async function runMount() {
       ));
       (0, import_core.saveState)("STICKYDISK_EXPOSE_ID", exposeId);
       (0, import_core.saveState)("STICKYDISK_WAS_FORMATTED", wasFormatted ? "true" : "false");
-      core2.debug(
+      core3.debug(
         `Sticky disk mounted to ${device}, expose ID: ${exposeId}, freshly formatted: ${wasFormatted}`
       );
     } catch (error2) {
       if (error2 instanceof Error && error2.name === "AbortError") {
-        core2.warning("Request to get sticky disk timed out");
+        core3.warning("Request to get sticky disk timed out");
       }
       throw error2;
     }
@@ -25763,20 +25793,23 @@ async function runMount() {
     }
   }
   if (stickyDiskError) {
-    core2.warning(`Error getting sticky disk: ${stickyDiskError}`);
+    core3.warning(`Error getting sticky disk: ${stickyDiskError}`);
     await ensureFallbackDirectory(stickyDiskPath);
+  }
+  if (goCaching) {
+    await setupGoCaches(stickyDiskPath);
   }
   if (!stickyDiskError && commitIntent === CommitIntent2.ON_CHANGE) {
     const initialUsage = await getInitialDiskUsage(stickyDiskPath);
     if (initialUsage) {
       (0, import_core.saveState)("STICKYDISK_INITIAL_USAGE_BYTES", initialUsage);
-      core2.debug(`Recorded initial disk usage: ${initialUsage} bytes`);
+      core3.debug(`Recorded initial disk usage: ${initialUsage} bytes`);
     }
   }
 }
 
 // src/bin/main.ts
-runMount();
+runMount({ goCaching: false });
 /*! Bundled license information:
 
 undici/lib/fetch/body.js:

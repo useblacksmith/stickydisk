@@ -71,7 +71,7 @@ Blacksmith natively supports [Bazel remote caching](https://docs.blacksmith.sh/b
 
 ## Go Build and Module Cache
 
-Go projects benefit from persistent build and module caches, especially for large codebases with many dependencies.
+The `useblacksmith/stickydisk/go` action puts `GOCACHE` and `GOMODCACHE` on a single sticky disk and exports them for subsequent steps. After the job, each cache is trimmed if it exceeds its size limit (50 GiB build, 15 GiB modules).
 
 ```yaml
 jobs:
@@ -80,22 +80,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Mount Go Caches
+        uses: useblacksmith/stickydisk/go@v1
+
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version: "1.22"
-
-      - name: Mount Go Build Cache
-        uses: useblacksmith/stickydisk@v1
-        with:
-          key: ${{ github.repository }}-go-build-cache-${{ runner.os }}
-          path: ~/.cache/go-build
-
-      - name: Mount Go Module Cache
-        uses: useblacksmith/stickydisk@v1
-        with:
-          key: ${{ github.repository }}-go-mod-cache-${{ runner.os }}
-          path: ~/go/pkg/mod
+          cache: false # the sticky disk handles caching
 
       - name: Build
         run: go build ./...

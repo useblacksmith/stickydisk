@@ -1,3 +1,3 @@
 import { runUnmount } from "../unmount";
 
-runUnmount({ goCaching: false });
+runUnmount({ goCaching: true });

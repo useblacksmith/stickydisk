@@ -100,11 +100,11 @@ var require_command = __commonJS({
     };
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.issue = exports.issueCommand = void 0;
-    var os = __importStar(__require("os"));
+    var os2 = __importStar(__require("os"));
     var utils_1 = require_utils();
     function issueCommand(command, properties, message) {
       const cmd = new Command(command, properties, message);
-      process.stdout.write(cmd.toString() + os.EOL);
+      process.stdout.write(cmd.toString() + os2.EOL);
     }
     exports.issueCommand = issueCommand;
     function issue(name, message = "") {
@@ -187,18 +187,18 @@ var require_file_command = __commonJS({
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.prepareKeyValueMessage = exports.issueFileCommand = void 0;
     var crypto = __importStar(__require("crypto"));
-    var fs2 = __importStar(__require("fs"));
-    var os = __importStar(__require("os"));
+    var fs3 = __importStar(__require("fs"));
+    var os2 = __importStar(__require("os"));
     var utils_1 = require_utils();
     function issueFileCommand(command, message) {
       const filePath = process.env[`GITHUB_${command}`];
       if (!filePath) {
         throw new Error(`Unable to find environment variable for file command ${command}`);
       }
-      if (!fs2.existsSync(filePath)) {
+      if (!fs3.existsSync(filePath)) {
         throw new Error(`Missing file at path: ${filePath}`);
       }
-      fs2.appendFileSync(filePath, `${(0, utils_1.toCommandValue)(message)}${os.EOL}`, {
+      fs3.appendFileSync(filePath, `${(0, utils_1.toCommandValue)(message)}${os2.EOL}`, {
         encoding: "utf8"
       });
     }
@@ -212,7 +212,7 @@ var require_file_command = __commonJS({
       if (convertedValue.includes(delimiter)) {
         throw new Error(`Unexpected input: value should not contain the delimiter "${delimiter}"`);
       }
-      return `${key}<<${delimiter}${os.EOL}${convertedValue}${os.EOL}${delimiter}`;
+      return `${key}<<${delimiter}${os2.EOL}${convertedValue}${os2.EOL}${delimiter}`;
     }
     exports.prepareKeyValueMessage = prepareKeyValueMessage;
   }
@@ -403,7 +403,7 @@ var require_tunnel = __commonJS({
         connectOptions.headers = connectOptions.headers || {};
         connectOptions.headers["Proxy-Authorization"] = "Basic " + new Buffer(connectOptions.proxyAuth).toString("base64");
       }
-      debug3("making CONNECT request");
+      debug4("making CONNECT request");
       var connectReq = self.request(connectOptions);
       connectReq.useChunkedEncodingByDefault = false;
       connectReq.once("response", onResponse);
@@ -423,7 +423,7 @@ var require_tunnel = __commonJS({
         connectReq.removeAllListeners();
         socket.removeAllListeners();
         if (res.statusCode !== 200) {
-          debug3(
+          debug4(
             "tunneling socket could not be established, statusCode=%d",
             res.statusCode
           );
@@ -435,7 +435,7 @@ var require_tunnel = __commonJS({
           return;
         }
         if (head.length > 0) {
-          debug3("got illegal response body from proxy");
+          debug4("got illegal response body from proxy");
           socket.destroy();
           var error2 = new Error("got illegal response body from proxy");
           error2.code = "ECONNRESET";
@@ -443,13 +443,13 @@ var require_tunnel = __commonJS({
           self.removeSocket(placeholder);
           return;
         }
-        debug3("tunneling connection has established");
+        debug4("tunneling connection has established");
         self.sockets[self.sockets.indexOf(placeholder)] = socket;
         return cb(socket);
       }
       function onError(cause) {
         connectReq.removeAllListeners();
-        debug3(
+        debug4(
           "tunneling socket could not be established, cause=%s\n",
           cause.message,
           cause.stack
@@ -511,9 +511,9 @@ var require_tunnel = __commonJS({
       }
       return target;
     }
-    var debug3;
+    var debug4;
     if (process.env.NODE_DEBUG && /\btunnel\b/.test(process.env.NODE_DEBUG)) {
-      debug3 = function() {
+      debug4 = function() {
         var args = Array.prototype.slice.call(arguments);
         if (typeof args[0] === "string") {
           args[0] = "TUNNEL: " + args[0];
@@ -523,10 +523,10 @@ var require_tunnel = __commonJS({
         console.error.apply(console, args);
       };
     } else {
-      debug3 = function() {
+      debug4 = function() {
       };
     }
-    exports.debug = debug3;
+    exports.debug = debug4;
   }
 });
 
@@ -1001,14 +1001,14 @@ var require_util = __commonJS({
         }
         const port = url.port != null ? url.port : url.protocol === "https:" ? 443 : 80;
         let origin = url.origin != null ? url.origin : `${url.protocol}//${url.hostname}:${port}`;
-        let path2 = url.path != null ? url.path : `${url.pathname || ""}${url.search || ""}`;
+        let path3 = url.path != null ? url.path : `${url.pathname || ""}${url.search || ""}`;
         if (origin.endsWith("/")) {
           origin = origin.substring(0, origin.length - 1);
         }
-        if (path2 && !path2.startsWith("/")) {
-          path2 = `/${path2}`;
+        if (path3 && !path3.startsWith("/")) {
+          path3 = `/${path3}`;
         }
-        url = new URL(origin + path2);
+        url = new URL(origin + path3);
       }
       return url;
     }
@@ -2622,20 +2622,20 @@ var require_parseParams = __commonJS({
 var require_basename = __commonJS({
   "node_modules/@fastify/busboy/lib/utils/basename.js"(exports, module) {
     "use strict";
-    module.exports = function basename(path2) {
-      if (typeof path2 !== "string") {
+    module.exports = function basename(path3) {
+      if (typeof path3 !== "string") {
         return "";
       }
-      for (var i = path2.length - 1; i >= 0; --i) {
-        switch (path2.charCodeAt(i)) {
+      for (var i = path3.length - 1; i >= 0; --i) {
+        switch (path3.charCodeAt(i)) {
           case 47:
           // '/'
           case 92:
-            path2 = path2.slice(i + 1);
-            return path2 === ".." || path2 === "." ? "" : path2;
+            path3 = path3.slice(i + 1);
+            return path3 === ".." || path3 === "." ? "" : path3;
         }
       }
-      return path2 === ".." || path2 === "." ? "" : path2;
+      return path3 === ".." || path3 === "." ? "" : path3;
     };
   }
 });
@@ -5658,7 +5658,7 @@ var require_request = __commonJS({
     }
     var Request = class _Request {
       constructor(origin, {
-        path: path2,
+        path: path3,
         method,
         body,
         headers,
@@ -5672,11 +5672,11 @@ var require_request = __commonJS({
         throwOnError,
         expectContinue
       }, handler) {
-        if (typeof path2 !== "string") {
+        if (typeof path3 !== "string") {
           throw new InvalidArgumentError("path must be a string");
-        } else if (path2[0] !== "/" && !(path2.startsWith("http://") || path2.startsWith("https://")) && method !== "CONNECT") {
+        } else if (path3[0] !== "/" && !(path3.startsWith("http://") || path3.startsWith("https://")) && method !== "CONNECT") {
           throw new InvalidArgumentError("path must be an absolute URL or start with a slash");
-        } else if (invalidPathRegex.exec(path2) !== null) {
+        } else if (invalidPathRegex.exec(path3) !== null) {
           throw new InvalidArgumentError("invalid request path");
         }
         if (typeof method !== "string") {
@@ -5739,7 +5739,7 @@ var require_request = __commonJS({
         this.completed = false;
         this.aborted = false;
         this.upgrade = upgrade || null;
-        this.path = query ? util.buildURL(path2, query) : path2;
+        this.path = query ? util.buildURL(path3, query) : path3;
         this.origin = origin;
         this.idempotent = idempotent == null ? method === "HEAD" || method === "GET" : idempotent;
         this.blocking = blocking == null ? false : blocking;
@@ -6747,9 +6747,9 @@ var require_RedirectHandler = __commonJS({
           return this.handler.onHeaders(statusCode, headers, resume, statusText);
         }
         const { origin, pathname, search } = util.parseURL(new URL(this.location, this.opts.origin && new URL(this.opts.path, this.opts.origin)));
-        const path2 = search ? `${pathname}${search}` : pathname;
+        const path3 = search ? `${pathname}${search}` : pathname;
         this.opts.headers = cleanRequestHeaders(this.opts.headers, statusCode === 303, this.opts.origin !== origin);
-        this.opts.path = path2;
+        this.opts.path = path3;
         this.opts.origin = origin;
         this.opts.maxRedirections = 0;
         this.opts.query = null;
@@ -7989,7 +7989,7 @@ var require_client = __commonJS({
         writeH2(client, client[kHTTP2Session], request3);
         return;
       }
-      const { body, method, path: path2, host, upgrade, headers, blocking, reset } = request3;
+      const { body, method, path: path3, host, upgrade, headers, blocking, reset } = request3;
       const expectsPayload = method === "PUT" || method === "POST" || method === "PATCH";
       if (body && typeof body.read === "function") {
         body.read(0);
@@ -8039,7 +8039,7 @@ var require_client = __commonJS({
       if (blocking) {
         socket[kBlocking] = true;
       }
-      let header = `${method} ${path2} HTTP/1.1\r
+      let header = `${method} ${path3} HTTP/1.1\r
 `;
       if (typeof host === "string") {
         header += `host: ${host}\r
@@ -8102,7 +8102,7 @@ upgrade: ${upgrade}\r
       return true;
     }
     function writeH2(client, session, request3) {
-      const { body, method, path: path2, host, upgrade, expectContinue, signal, headers: reqHeaders } = request3;
+      const { body, method, path: path3, host, upgrade, expectContinue, signal, headers: reqHeaders } = request3;
       let headers;
       if (typeof reqHeaders === "string") headers = Request[kHTTP2CopyHeaders](reqHeaders.trim());
       else headers = reqHeaders;
@@ -8145,7 +8145,7 @@ upgrade: ${upgrade}\r
         });
         return true;
       }
-      headers[HTTP2_HEADER_PATH] = path2;
+      headers[HTTP2_HEADER_PATH] = path3;
       headers[HTTP2_HEADER_SCHEME] = "https";
       const expectsPayload = method === "PUT" || method === "POST" || method === "PATCH";
       if (body && typeof body.read === "function") {
@@ -10377,20 +10377,20 @@ var require_mock_utils = __commonJS({
       }
       return true;
     }
-    function safeUrl(path2) {
-      if (typeof path2 !== "string") {
-        return path2;
+    function safeUrl(path3) {
+      if (typeof path3 !== "string") {
+        return path3;
       }
-      const pathSegments = path2.split("?");
+      const pathSegments = path3.split("?");
       if (pathSegments.length !== 2) {
-        return path2;
+        return path3;
       }
       const qp = new URLSearchParams(pathSegments.pop());
       qp.sort();
       return [...pathSegments, qp.toString()].join("?");
     }
-    function matchKey(mockDispatch2, { path: path2, method, body, headers }) {
-      const pathMatch = matchValue(mockDispatch2.path, path2);
+    function matchKey(mockDispatch2, { path: path3, method, body, headers }) {
+      const pathMatch = matchValue(mockDispatch2.path, path3);
       const methodMatch = matchValue(mockDispatch2.method, method);
       const bodyMatch = typeof mockDispatch2.body !== "undefined" ? matchValue(mockDispatch2.body, body) : true;
       const headersMatch = matchHeaders(mockDispatch2, headers);
@@ -10408,7 +10408,7 @@ var require_mock_utils = __commonJS({
     function getMockDispatch(mockDispatches, key) {
       const basePath = key.query ? buildURL(key.path, key.query) : key.path;
       const resolvedPath = typeof basePath === "string" ? safeUrl(basePath) : basePath;
-      let matchedMockDispatches = mockDispatches.filter(({ consumed }) => !consumed).filter(({ path: path2 }) => matchValue(safeUrl(path2), resolvedPath));
+      let matchedMockDispatches = mockDispatches.filter(({ consumed }) => !consumed).filter(({ path: path3 }) => matchValue(safeUrl(path3), resolvedPath));
       if (matchedMockDispatches.length === 0) {
         throw new MockNotMatchedError(`Mock dispatch not matched for path '${resolvedPath}'`);
       }
@@ -10445,9 +10445,9 @@ var require_mock_utils = __commonJS({
       }
     }
     function buildKey(opts) {
-      const { path: path2, method, body, headers, query } = opts;
+      const { path: path3, method, body, headers, query } = opts;
       return {
-        path: path2,
+        path: path3,
         method,
         body,
         headers,
@@ -10741,7 +10741,7 @@ var require_mock_interceptor = __commonJS({
 var require_mock_client = __commonJS({
   "node_modules/undici/lib/mock/mock-client.js"(exports, module) {
     "use strict";
-    var { promisify: promisify3 } = __require("util");
+    var { promisify: promisify4 } = __require("util");
     var Client = require_client();
     var { buildMockDispatch } = require_mock_utils();
     var {
@@ -10781,7 +10781,7 @@ var require_mock_client = __commonJS({
         return new MockInterceptor(opts, this[kDispatches]);
       }
       async [kClose]() {
-        await promisify3(this[kOriginalClose])();
+        await promisify4(this[kOriginalClose])();
         this[kConnected] = 0;
         this[kMockAgent][Symbols.kClients].delete(this[kOrigin]);
       }
@@ -10794,7 +10794,7 @@ var require_mock_client = __commonJS({
 var require_mock_pool = __commonJS({
   "node_modules/undici/lib/mock/mock-pool.js"(exports, module) {
     "use strict";
-    var { promisify: promisify3 } = __require("util");
+    var { promisify: promisify4 } = __require("util");
     var Pool = require_pool();
     var { buildMockDispatch } = require_mock_utils();
     var {
@@ -10834,7 +10834,7 @@ var require_mock_pool = __commonJS({
         return new MockInterceptor(opts, this[kDispatches]);
       }
       async [kClose]() {
-        await promisify3(this[kOriginalClose])();
+        await promisify4(this[kOriginalClose])();
         this[kConnected] = 0;
         this[kMockAgent][Symbols.kClients].delete(this[kOrigin]);
       }
@@ -10896,10 +10896,10 @@ var require_pending_interceptors_formatter = __commonJS({
       }
       format(pendingInterceptors) {
         const withPrettyHeaders = pendingInterceptors.map(
-          ({ method, path: path2, data: { statusCode }, persist, times, timesInvoked, origin }) => ({
+          ({ method, path: path3, data: { statusCode }, persist, times, timesInvoked, origin }) => ({
             Method: method,
             Origin: origin,
-            Path: path2,
+            Path: path3,
             "Status code": statusCode,
             Persistent: persist ? "\u2705" : "\u274C",
             Invocations: timesInvoked,
@@ -15517,8 +15517,8 @@ var require_util6 = __commonJS({
         }
       }
     }
-    function validateCookiePath(path2) {
-      for (const char of path2) {
+    function validateCookiePath(path3) {
+      for (const char of path3) {
         const code = char.charCodeAt(0);
         if (code < 33 || char === ";") {
           throw new Error("Invalid cookie path");
@@ -17210,11 +17210,11 @@ var require_undici = __commonJS({
           if (typeof opts.path !== "string") {
             throw new InvalidArgumentError("invalid opts.path");
           }
-          let path2 = opts.path;
+          let path3 = opts.path;
           if (!opts.path.startsWith("/")) {
-            path2 = `/${path2}`;
+            path3 = `/${path3}`;
           }
-          url = new URL(util.parseOrigin(url).origin + path2);
+          url = new URL(util.parseOrigin(url).origin + path3);
         } else {
           if (!opts) {
             opts = typeof url === "object" ? url : {};
@@ -17586,12 +17586,12 @@ var require_lib = __commonJS({
             throw new Error("Client has already been disposed.");
           }
           const parsedUrl = new URL(requestUrl);
-          let info3 = this._prepareRequest(verb, parsedUrl, headers);
+          let info4 = this._prepareRequest(verb, parsedUrl, headers);
           const maxTries = this._allowRetries && RetryableHttpVerbs.includes(verb) ? this._maxRetries + 1 : 1;
           let numTries = 0;
           let response;
           do {
-            response = yield this.requestRaw(info3, data);
+            response = yield this.requestRaw(info4, data);
             if (response && response.message && response.message.statusCode === HttpCodes.Unauthorized) {
               let authenticationHandler;
               for (const handler of this.handlers) {
@@ -17601,7 +17601,7 @@ var require_lib = __commonJS({
                 }
               }
               if (authenticationHandler) {
-                return authenticationHandler.handleAuthentication(this, info3, data);
+                return authenticationHandler.handleAuthentication(this, info4, data);
               } else {
                 return response;
               }
@@ -17624,8 +17624,8 @@ var require_lib = __commonJS({
                   }
                 }
               }
-              info3 = this._prepareRequest(verb, parsedRedirectUrl, headers);
-              response = yield this.requestRaw(info3, data);
+              info4 = this._prepareRequest(verb, parsedRedirectUrl, headers);
+              response = yield this.requestRaw(info4, data);
               redirectsRemaining--;
             }
             if (!response.message.statusCode || !HttpResponseRetryCodes.includes(response.message.statusCode)) {
@@ -17654,7 +17654,7 @@ var require_lib = __commonJS({
        * @param info
        * @param data
        */
-      requestRaw(info3, data) {
+      requestRaw(info4, data) {
         return __awaiter(this, void 0, void 0, function* () {
           return new Promise((resolve, reject) => {
             function callbackForResult(err, res) {
@@ -17666,7 +17666,7 @@ var require_lib = __commonJS({
                 resolve(res);
               }
             }
-            this.requestRawWithCallback(info3, data, callbackForResult);
+            this.requestRawWithCallback(info4, data, callbackForResult);
           });
         });
       }
@@ -17676,12 +17676,12 @@ var require_lib = __commonJS({
        * @param data
        * @param onResult
        */
-      requestRawWithCallback(info3, data, onResult) {
+      requestRawWithCallback(info4, data, onResult) {
         if (typeof data === "string") {
-          if (!info3.options.headers) {
-            info3.options.headers = {};
+          if (!info4.options.headers) {
+            info4.options.headers = {};
           }
-          info3.options.headers["Content-Length"] = Buffer.byteLength(data, "utf8");
+          info4.options.headers["Content-Length"] = Buffer.byteLength(data, "utf8");
         }
         let callbackCalled = false;
         function handleResult(err, res) {
@@ -17690,7 +17690,7 @@ var require_lib = __commonJS({
             onResult(err, res);
           }
         }
-        const req = info3.httpModule.request(info3.options, (msg) => {
+        const req = info4.httpModule.request(info4.options, (msg) => {
           const res = new HttpClientResponse(msg);
           handleResult(void 0, res);
         });
@@ -17702,7 +17702,7 @@ var require_lib = __commonJS({
           if (socket) {
             socket.end();
           }
-          handleResult(new Error(`Request timeout: ${info3.options.path}`));
+          handleResult(new Error(`Request timeout: ${info4.options.path}`));
         });
         req.on("error", function(err) {
           handleResult(err);
@@ -17738,27 +17738,27 @@ var require_lib = __commonJS({
         return this._getProxyAgentDispatcher(parsedUrl, proxyUrl);
       }
       _prepareRequest(method, requestUrl, headers) {
-        const info3 = {};
-        info3.parsedUrl = requestUrl;
-        const usingSsl = info3.parsedUrl.protocol === "https:";
-        info3.httpModule = usingSsl ? https2 : http3;
+        const info4 = {};
+        info4.parsedUrl = requestUrl;
+        const usingSsl = info4.parsedUrl.protocol === "https:";
+        info4.httpModule = usingSsl ? https2 : http3;
         const defaultPort = usingSsl ? 443 : 80;
-        info3.options = {};
-        info3.options.host = info3.parsedUrl.hostname;
-        info3.options.port = info3.parsedUrl.port ? parseInt(info3.parsedUrl.port) : defaultPort;
-        info3.options.path = (info3.parsedUrl.pathname || "") + (info3.parsedUrl.search || "");
-        info3.options.method = method;
-        info3.options.headers = this._mergeHeaders(headers);
+        info4.options = {};
+        info4.options.host = info4.parsedUrl.hostname;
+        info4.options.port = info4.parsedUrl.port ? parseInt(info4.parsedUrl.port) : defaultPort;
+        info4.options.path = (info4.parsedUrl.pathname || "") + (info4.parsedUrl.search || "");
+        info4.options.method = method;
+        info4.options.headers = this._mergeHeaders(headers);
         if (this.userAgent != null) {
-          info3.options.headers["user-agent"] = this.userAgent;
+          info4.options.headers["user-agent"] = this.userAgent;
         }
-        info3.options.agent = this._getAgent(info3.parsedUrl);
+        info4.options.agent = this._getAgent(info4.parsedUrl);
         if (this.handlers) {
           for (const handler of this.handlers) {
-            handler.prepareRequest(info3.options);
+            handler.prepareRequest(info4.options);
           }
         }
-        return info3;
+        return info4;
       }
       _mergeHeaders(headers) {
         if (this.requestOptions && this.requestOptions.headers) {
@@ -18145,7 +18145,7 @@ var require_summary = __commonJS({
     exports.summary = exports.markdownSummary = exports.SUMMARY_DOCS_URL = exports.SUMMARY_ENV_VAR = void 0;
     var os_1 = __require("os");
     var fs_1 = __require("fs");
-    var { access, appendFile, writeFile } = fs_1.promises;
+    var { access, appendFile, writeFile: writeFile2 } = fs_1.promises;
     exports.SUMMARY_ENV_VAR = "GITHUB_STEP_SUMMARY";
     exports.SUMMARY_DOCS_URL = "https://docs.github.com/actions/using-workflows/workflow-commands-for-github-actions#adding-a-job-summary";
     var Summary = class {
@@ -18203,7 +18203,7 @@ var require_summary = __commonJS({
         return __awaiter(this, void 0, void 0, function* () {
           const overwrite = !!(options === null || options === void 0 ? void 0 : options.overwrite);
           const filePath = yield this.filePath();
-          const writeFunc = overwrite ? writeFile : appendFile;
+          const writeFunc = overwrite ? writeFile2 : appendFile;
           yield writeFunc(filePath, this._buffer, { encoding: "utf8" });
           return this.emptyBuffer();
         });
@@ -18437,7 +18437,7 @@ var require_path_utils = __commonJS({
     };
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.toPlatformPath = exports.toWin32Path = exports.toPosixPath = void 0;
-    var path2 = __importStar(__require("path"));
+    var path3 = __importStar(__require("path"));
     function toPosixPath(pth) {
       return pth.replace(/[\\]/g, "/");
     }
@@ -18447,7 +18447,7 @@ var require_path_utils = __commonJS({
     }
     exports.toWin32Path = toWin32Path;
     function toPlatformPath(pth) {
-      return pth.replace(/[/\\]/g, path2.sep);
+      return pth.replace(/[/\\]/g, path3.sep);
     }
     exports.toPlatformPath = toPlatformPath;
   }
@@ -18510,12 +18510,12 @@ var require_io_util = __commonJS({
     var _a;
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.getCmdPath = exports.tryGetExecutablePath = exports.isRooted = exports.isDirectory = exports.exists = exports.READONLY = exports.UV_FS_O_EXLOCK = exports.IS_WINDOWS = exports.unlink = exports.symlink = exports.stat = exports.rmdir = exports.rm = exports.rename = exports.readlink = exports.readdir = exports.open = exports.mkdir = exports.lstat = exports.copyFile = exports.chmod = void 0;
-    var fs2 = __importStar(__require("fs"));
-    var path2 = __importStar(__require("path"));
-    _a = fs2.promises, exports.chmod = _a.chmod, exports.copyFile = _a.copyFile, exports.lstat = _a.lstat, exports.mkdir = _a.mkdir, exports.open = _a.open, exports.readdir = _a.readdir, exports.readlink = _a.readlink, exports.rename = _a.rename, exports.rm = _a.rm, exports.rmdir = _a.rmdir, exports.stat = _a.stat, exports.symlink = _a.symlink, exports.unlink = _a.unlink;
+    var fs3 = __importStar(__require("fs"));
+    var path3 = __importStar(__require("path"));
+    _a = fs3.promises, exports.chmod = _a.chmod, exports.copyFile = _a.copyFile, exports.lstat = _a.lstat, exports.mkdir = _a.mkdir, exports.open = _a.open, exports.readdir = _a.readdir, exports.readlink = _a.readlink, exports.rename = _a.rename, exports.rm = _a.rm, exports.rmdir = _a.rmdir, exports.stat = _a.stat, exports.symlink = _a.symlink, exports.unlink = _a.unlink;
     exports.IS_WINDOWS = process.platform === "win32";
     exports.UV_FS_O_EXLOCK = 268435456;
-    exports.READONLY = fs2.constants.O_RDONLY;
+    exports.READONLY = fs3.constants.O_RDONLY;
     function exists(fsPath) {
       return __awaiter(this, void 0, void 0, function* () {
         try {
@@ -18560,7 +18560,7 @@ var require_io_util = __commonJS({
         }
         if (stats && stats.isFile()) {
           if (exports.IS_WINDOWS) {
-            const upperExt = path2.extname(filePath).toUpperCase();
+            const upperExt = path3.extname(filePath).toUpperCase();
             if (extensions.some((validExt) => validExt.toUpperCase() === upperExt)) {
               return filePath;
             }
@@ -18584,11 +18584,11 @@ var require_io_util = __commonJS({
           if (stats && stats.isFile()) {
             if (exports.IS_WINDOWS) {
               try {
-                const directory = path2.dirname(filePath);
-                const upperName = path2.basename(filePath).toUpperCase();
+                const directory = path3.dirname(filePath);
+                const upperName = path3.basename(filePath).toUpperCase();
                 for (const actualName of yield exports.readdir(directory)) {
                   if (upperName === actualName.toUpperCase()) {
-                    filePath = path2.join(directory, actualName);
+                    filePath = path3.join(directory, actualName);
                     break;
                   }
                 }
@@ -18683,7 +18683,7 @@ var require_io = __commonJS({
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.findInPath = exports.which = exports.mkdirP = exports.rmRF = exports.mv = exports.cp = void 0;
     var assert_1 = __require("assert");
-    var path2 = __importStar(__require("path"));
+    var path3 = __importStar(__require("path"));
     var ioUtil = __importStar(require_io_util());
     function cp(source, dest, options = {}) {
       return __awaiter(this, void 0, void 0, function* () {
@@ -18692,7 +18692,7 @@ var require_io = __commonJS({
         if (destStat && destStat.isFile() && !force) {
           return;
         }
-        const newDest = destStat && destStat.isDirectory() && copySourceDirectory ? path2.join(dest, path2.basename(source)) : dest;
+        const newDest = destStat && destStat.isDirectory() && copySourceDirectory ? path3.join(dest, path3.basename(source)) : dest;
         if (!(yield ioUtil.exists(source))) {
           throw new Error(`no such file or directory: ${source}`);
         }
@@ -18704,7 +18704,7 @@ var require_io = __commonJS({
             yield cpDirRecursive(source, newDest, 0, force);
           }
         } else {
-          if (path2.relative(source, newDest) === "") {
+          if (path3.relative(source, newDest) === "") {
             throw new Error(`'${newDest}' and '${source}' are the same file`);
           }
           yield copyFile(source, newDest, force);
@@ -18717,7 +18717,7 @@ var require_io = __commonJS({
         if (yield ioUtil.exists(dest)) {
           let destExists = true;
           if (yield ioUtil.isDirectory(dest)) {
-            dest = path2.join(dest, path2.basename(source));
+            dest = path3.join(dest, path3.basename(source));
             destExists = yield ioUtil.exists(dest);
           }
           if (destExists) {
@@ -18728,7 +18728,7 @@ var require_io = __commonJS({
             }
           }
         }
-        yield mkdirP(path2.dirname(dest));
+        yield mkdirP(path3.dirname(dest));
         yield ioUtil.rename(source, dest);
       });
     }
@@ -18791,7 +18791,7 @@ var require_io = __commonJS({
         }
         const extensions = [];
         if (ioUtil.IS_WINDOWS && process.env["PATHEXT"]) {
-          for (const extension of process.env["PATHEXT"].split(path2.delimiter)) {
+          for (const extension of process.env["PATHEXT"].split(path3.delimiter)) {
             if (extension) {
               extensions.push(extension);
             }
@@ -18804,12 +18804,12 @@ var require_io = __commonJS({
           }
           return [];
         }
-        if (tool.includes(path2.sep)) {
+        if (tool.includes(path3.sep)) {
           return [];
         }
         const directories = [];
         if (process.env.PATH) {
-          for (const p of process.env.PATH.split(path2.delimiter)) {
+          for (const p of process.env.PATH.split(path3.delimiter)) {
             if (p) {
               directories.push(p);
             }
@@ -18817,7 +18817,7 @@ var require_io = __commonJS({
         }
         const matches = [];
         for (const directory of directories) {
-          const filePath = yield ioUtil.tryGetExecutablePath(path2.join(directory, tool), extensions);
+          const filePath = yield ioUtil.tryGetExecutablePath(path3.join(directory, tool), extensions);
           if (filePath) {
             matches.push(filePath);
           }
@@ -18930,10 +18930,10 @@ var require_toolrunner = __commonJS({
     };
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.argStringToArray = exports.ToolRunner = void 0;
-    var os = __importStar(__require("os"));
+    var os2 = __importStar(__require("os"));
     var events = __importStar(__require("events"));
     var child = __importStar(__require("child_process"));
-    var path2 = __importStar(__require("path"));
+    var path3 = __importStar(__require("path"));
     var io = __importStar(require_io());
     var ioUtil = __importStar(require_io_util());
     var timers_1 = __require("timers");
@@ -18985,12 +18985,12 @@ var require_toolrunner = __commonJS({
       _processLineBuffer(data, strBuffer, onLine) {
         try {
           let s = strBuffer + data.toString();
-          let n = s.indexOf(os.EOL);
+          let n = s.indexOf(os2.EOL);
           while (n > -1) {
             const line = s.substring(0, n);
             onLine(line);
-            s = s.substring(n + os.EOL.length);
-            n = s.indexOf(os.EOL);
+            s = s.substring(n + os2.EOL.length);
+            n = s.indexOf(os2.EOL);
           }
           return s;
         } catch (err) {
@@ -19148,7 +19148,7 @@ var require_toolrunner = __commonJS({
       exec() {
         return __awaiter(this, void 0, void 0, function* () {
           if (!ioUtil.isRooted(this.toolPath) && (this.toolPath.includes("/") || IS_WINDOWS && this.toolPath.includes("\\"))) {
-            this.toolPath = path2.resolve(process.cwd(), this.options.cwd || process.cwd(), this.toolPath);
+            this.toolPath = path3.resolve(process.cwd(), this.options.cwd || process.cwd(), this.toolPath);
           }
           this.toolPath = yield io.which(this.toolPath, true);
           return new Promise((resolve, reject) => __awaiter(this, void 0, void 0, function* () {
@@ -19159,7 +19159,7 @@ var require_toolrunner = __commonJS({
             }
             const optionsNonNull = this._cloneExecOptions(this.options);
             if (!optionsNonNull.silent && optionsNonNull.outStream) {
-              optionsNonNull.outStream.write(this._getCommandString(optionsNonNull) + os.EOL);
+              optionsNonNull.outStream.write(this._getCommandString(optionsNonNull) + os2.EOL);
             }
             const state = new ExecState(optionsNonNull, this.toolPath);
             state.on("debug", (message) => {
@@ -19416,7 +19416,7 @@ var require_exec = __commonJS({
     exports.getExecOutput = exports.exec = void 0;
     var string_decoder_1 = __require("string_decoder");
     var tr = __importStar(require_toolrunner());
-    function exec2(commandLine, args, options) {
+    function exec3(commandLine, args, options) {
       return __awaiter(this, void 0, void 0, function* () {
         const commandArgs = tr.argStringToArray(commandLine);
         if (commandArgs.length === 0) {
@@ -19428,7 +19428,7 @@ var require_exec = __commonJS({
         return runner.exec();
       });
     }
-    exports.exec = exec2;
+    exports.exec = exec3;
     function getExecOutput(commandLine, args, options) {
       var _a, _b;
       return __awaiter(this, void 0, void 0, function* () {
@@ -19451,7 +19451,7 @@ var require_exec = __commonJS({
           }
         };
         const listeners = Object.assign(Object.assign({}, options === null || options === void 0 ? void 0 : options.listeners), { stdout: stdOutListener, stderr: stdErrListener });
-        const exitCode = yield exec2(commandLine, args, Object.assign(Object.assign({}, options), { listeners }));
+        const exitCode = yield exec3(commandLine, args, Object.assign(Object.assign({}, options), { listeners }));
         stdout += stdoutDecoder.end();
         stderr += stderrDecoder.end();
         return {
@@ -19529,12 +19529,12 @@ var require_platform = __commonJS({
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.getDetails = exports.isLinux = exports.isMacOS = exports.isWindows = exports.arch = exports.platform = void 0;
     var os_1 = __importDefault(__require("os"));
-    var exec2 = __importStar(require_exec());
+    var exec3 = __importStar(require_exec());
     var getWindowsInfo = () => __awaiter(void 0, void 0, void 0, function* () {
-      const { stdout: version } = yield exec2.getExecOutput('powershell -command "(Get-CimInstance -ClassName Win32_OperatingSystem).Version"', void 0, {
+      const { stdout: version } = yield exec3.getExecOutput('powershell -command "(Get-CimInstance -ClassName Win32_OperatingSystem).Version"', void 0, {
         silent: true
       });
-      const { stdout: name } = yield exec2.getExecOutput('powershell -command "(Get-CimInstance -ClassName Win32_OperatingSystem).Caption"', void 0, {
+      const { stdout: name } = yield exec3.getExecOutput('powershell -command "(Get-CimInstance -ClassName Win32_OperatingSystem).Caption"', void 0, {
         silent: true
       });
       return {
@@ -19544,7 +19544,7 @@ var require_platform = __commonJS({
     });
     var getMacOsInfo = () => __awaiter(void 0, void 0, void 0, function* () {
       var _a, _b, _c, _d;
-      const { stdout } = yield exec2.getExecOutput("sw_vers", void 0, {
+      const { stdout } = yield exec3.getExecOutput("sw_vers", void 0, {
         silent: true
       });
       const version = (_b = (_a = stdout.match(/ProductVersion:\s*(.+)/)) === null || _a === void 0 ? void 0 : _a[1]) !== null && _b !== void 0 ? _b : "";
@@ -19555,7 +19555,7 @@ var require_platform = __commonJS({
       };
     });
     var getLinuxInfo = () => __awaiter(void 0, void 0, void 0, function* () {
-      const { stdout } = yield exec2.getExecOutput("lsb_release", ["-i", "-r", "-s"], {
+      const { stdout } = yield exec3.getExecOutput("lsb_release", ["-i", "-r", "-s"], {
         silent: true
       });
       const [name, version] = stdout.trim().split("\n");
@@ -19647,15 +19647,15 @@ var require_core = __commonJS({
     var command_1 = require_command();
     var file_command_1 = require_file_command();
     var utils_1 = require_utils();
-    var os = __importStar(__require("os"));
-    var path2 = __importStar(__require("path"));
+    var os2 = __importStar(__require("os"));
+    var path3 = __importStar(__require("path"));
     var oidc_utils_1 = require_oidc_utils();
     var ExitCode;
     (function(ExitCode2) {
       ExitCode2[ExitCode2["Success"] = 0] = "Success";
       ExitCode2[ExitCode2["Failure"] = 1] = "Failure";
     })(ExitCode || (exports.ExitCode = ExitCode = {}));
-    function exportVariable(name, val) {
+    function exportVariable2(name, val) {
       const convertedVal = (0, utils_1.toCommandValue)(val);
       process.env[name] = convertedVal;
       const filePath = process.env["GITHUB_ENV"] || "";
@@ -19664,7 +19664,7 @@ var require_core = __commonJS({
       }
       (0, command_1.issueCommand)("set-env", { name }, convertedVal);
     }
-    exports.exportVariable = exportVariable;
+    exports.exportVariable = exportVariable2;
     function setSecret(secret) {
       (0, command_1.issueCommand)("add-mask", {}, secret);
     }
@@ -19676,7 +19676,7 @@ var require_core = __commonJS({
       } else {
         (0, command_1.issueCommand)("add-path", {}, inputPath);
       }
-      process.env["PATH"] = `${inputPath}${path2.delimiter}${process.env["PATH"]}`;
+      process.env["PATH"] = `${inputPath}${path3.delimiter}${process.env["PATH"]}`;
     }
     exports.addPath = addPath;
     function getInput(name, options) {
@@ -19715,7 +19715,7 @@ Support boolean input list: \`true | True | TRUE | false | False | FALSE\``);
       if (filePath) {
         return (0, file_command_1.issueFileCommand)("OUTPUT", (0, file_command_1.prepareKeyValueMessage)(name, value));
       }
-      process.stdout.write(os.EOL);
+      process.stdout.write(os2.EOL);
       (0, command_1.issueCommand)("set-output", { name }, (0, utils_1.toCommandValue)(value));
     }
     exports.setOutput = setOutput;
@@ -19732,26 +19732,26 @@ Support boolean input list: \`true | True | TRUE | false | False | FALSE\``);
       return process.env["RUNNER_DEBUG"] === "1";
     }
     exports.isDebug = isDebug;
-    function debug3(message) {
+    function debug4(message) {
       (0, command_1.issueCommand)("debug", {}, message);
     }
-    exports.debug = debug3;
+    exports.debug = debug4;
     function error2(message, properties = {}) {
       (0, command_1.issueCommand)("error", (0, utils_1.toCommandProperties)(properties), message instanceof Error ? message.toString() : message);
     }
     exports.error = error2;
-    function warning2(message, properties = {}) {
+    function warning3(message, properties = {}) {
       (0, command_1.issueCommand)("warning", (0, utils_1.toCommandProperties)(properties), message instanceof Error ? message.toString() : message);
     }
-    exports.warning = warning2;
+    exports.warning = warning3;
     function notice(message, properties = {}) {
       (0, command_1.issueCommand)("notice", (0, utils_1.toCommandProperties)(properties), message instanceof Error ? message.toString() : message);
     }
     exports.notice = notice;
-    function info3(message) {
-      process.stdout.write(message + os.EOL);
+    function info4(message) {
+      process.stdout.write(message + os2.EOL);
     }
-    exports.info = info3;
+    exports.info = info4;
     function startGroup(name) {
       (0, command_1.issue)("group", name);
     }
@@ -19814,10 +19814,10 @@ Support boolean input list: \`true | True | TRUE | false | False | FALSE\``);
 });
 
 // src/unmount.ts
-var core3 = __toESM(require_core(), 1);
+var core4 = __toESM(require_core(), 1);
 var import_core = __toESM(require_core(), 1);
-import { promisify as promisify2 } from "util";
-import { exec } from "child_process";
+import { promisify as promisify3 } from "util";
+import { exec as exec2 } from "child_process";
 
 // node_modules/@connectrpc/connect/dist/esm/code.js
 var Code;
@@ -24351,11 +24351,11 @@ var Http2SessionManager = class {
    * Clients must call notifyResponseByteRead() whenever they successfully read
    * data from the http2.ClientHttp2Stream.
    */
-  async request(method, path2, headers, options) {
+  async request(method, path3, headers, options) {
     for (; ; ) {
       const ready2 = await this.gotoReady();
       try {
-        const stream = ready2.conn.request(Object.assign(Object.assign({}, headers), { ":method": method, ":path": path2 }), options);
+        const stream = ready2.conn.request(Object.assign(Object.assign({}, headers), { ":method": method, ":path": path3 }), options);
         ready2.registerRequest(stream);
         return stream;
       } catch (e) {
@@ -25531,10 +25531,10 @@ async function checkPreviousStepFailures(runnerBasePath) {
         runnerBasePath = cwd.substring(0, cwd.indexOf("/_work/"));
       } else {
         const possiblePaths = ["/home/runner", process.env.RUNNER_ROOT || ""];
-        for (const path2 of possiblePaths) {
+        for (const path3 of possiblePaths) {
           try {
-            await fs.access(path2);
-            runnerBasePath = path2;
+            await fs.access(path3);
+            runnerBasePath = path3;
             break;
           } catch {
           }
@@ -25632,14 +25632,176 @@ async function checkPreviousStepFailures(runnerBasePath) {
   }
 }
 
-// src/unmount.ts
+// src/go-cache.ts
+var core3 = __toESM(require_core(), 1);
+import { promisify as promisify2 } from "util";
+import { exec } from "child_process";
+import * as fs2 from "fs/promises";
+import * as os from "os";
+import * as path2 from "path";
+
+// src/path.ts
+function shellQuote(value) {
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+// src/go-cache.ts
 var execAsync = promisify2(exec);
-async function commitStickydisk(exposeId, stickyDiskKey, fsDiskUsageBytes) {
+var GO_BUILD_CACHE_SUBDIR = "go/build";
+var GO_MOD_CACHE_SUBDIR = "go/mod";
+var GO_BUILD_CACHE_LIMIT_GB = 50;
+var GO_MOD_CACHE_LIMIT_GB = 15;
+var GO_BUILD_CACHE_MAX_AGE_DAYS = 7;
+function goBuildCachePath(stickyDiskPath) {
+  return path2.join(stickyDiskPath, GO_BUILD_CACHE_SUBDIR);
+}
+function goModCachePath(stickyDiskPath) {
+  return path2.join(stickyDiskPath, GO_MOD_CACHE_SUBDIR);
+}
+async function dirSizeBytes(dir) {
+  try {
+    const { stdout } = await execAsync(`du -sB1 ${shellQuote(dir)} | cut -f1`);
+    const size = parseInt(stdout.trim(), 10);
+    return isNaN(size) ? null : size;
+  } catch (error2) {
+    core3.debug(
+      `Could not measure size of ${dir}: ${error2 instanceof Error ? error2.message : String(error2)}`
+    );
+    return null;
+  }
+}
+async function wipeDir(dir) {
+  await execAsync(`sudo rm -rf ${shellQuote(dir)}`);
+  await execAsync(`mkdir -p ${shellQuote(dir)}`);
+}
+var FIND_MAX_BUFFER_BYTES = 1024 * 1024 * 1024;
+async function evictStaleBuildCacheEntries(dir) {
+  const { stdout } = await execAsync(
+    `find ${shellQuote(dir)} -type f -mtime +${GO_BUILD_CACHE_MAX_AGE_DAYS} -print -delete | wc -l`,
+    { maxBuffer: FIND_MAX_BUFFER_BYTES }
+  );
+  const count = parseInt(stdout.trim(), 10);
+  if (!count) {
+    return false;
+  }
   core3.info(
+    `Evicted ${count} build cache entries unused for more than ${GO_BUILD_CACHE_MAX_AGE_DAYS} days`
+  );
+  return true;
+}
+async function trimBuildCacheLru(dir, limitBytes, sizeBytes) {
+  const { stdout } = await execAsync(
+    `find ${shellQuote(dir)} -type f -printf '%T@\\t%s\\t%p\\n' | sort -n`,
+    { maxBuffer: FIND_MAX_BUFFER_BYTES }
+  );
+  let bytesToFree = sizeBytes - limitBytes;
+  const toDelete = [];
+  for (const line of stdout.split("\n")) {
+    if (bytesToFree <= 0) {
+      break;
+    }
+    if (!line) {
+      continue;
+    }
+    const [, sizeStr, ...pathParts] = line.split("	");
+    const fileSize = parseInt(sizeStr, 10);
+    const filePath = pathParts.join("	");
+    if (isNaN(fileSize) || !filePath) {
+      continue;
+    }
+    toDelete.push(filePath);
+    bytesToFree -= fileSize;
+  }
+  if (toDelete.length === 0) {
+    return false;
+  }
+  const listFile = path2.join(
+    os.tmpdir(),
+    `stickydisk-gocache-trim-${Date.now()}`
+  );
+  await fs2.writeFile(listFile, toDelete.join("\n"));
+  try {
+    await execAsync(`xargs -a ${shellQuote(listFile)} -d '\\n' rm -f --`, {
+      maxBuffer: FIND_MAX_BUFFER_BYTES
+    });
+  } finally {
+    await fs2.rm(listFile, { force: true });
+  }
+  core3.info(
+    `Evicted ${toDelete.length} least-recently-used build cache entries`
+  );
+  return true;
+}
+async function trimGoCaches(stickyDiskPath) {
+  const caches = [
+    {
+      name: "GOCACHE",
+      dir: goBuildCachePath(stickyDiskPath),
+      limitGb: GO_BUILD_CACHE_LIMIT_GB,
+      preTrim: evictStaleBuildCacheEntries,
+      trim: trimBuildCacheLru,
+      action: "evicting least-recently-used entries"
+    },
+    {
+      name: "GOMODCACHE",
+      dir: goModCachePath(stickyDiskPath),
+      limitGb: GO_MOD_CACHE_LIMIT_GB,
+      preTrim: void 0,
+      trim: async (dir) => {
+        await wipeDir(dir);
+        return true;
+      },
+      action: "wiping it"
+    }
+  ];
+  const results = await Promise.all(
+    caches.map(async ({ name, dir, limitGb, preTrim, trim, action }) => {
+      let trimmed = false;
+      if (preTrim) {
+        try {
+          trimmed = await preTrim(dir);
+        } catch (error2) {
+          core3.warning(
+            `Failed to evict stale entries from ${name} at ${dir}: ${error2 instanceof Error ? error2.message : String(error2)}`
+          );
+        }
+      }
+      const sizeBytes = await dirSizeBytes(dir);
+      if (sizeBytes === null) {
+        return trimmed;
+      }
+      const limitBytes = limitGb * (1 << 30);
+      const sizeGb = (sizeBytes / (1 << 30)).toFixed(2);
+      if (sizeBytes <= limitBytes) {
+        core3.info(
+          `${name} at ${dir} is ${sizeGb} GiB, within the ${limitGb} GiB limit`
+        );
+        return trimmed;
+      }
+      core3.info(
+        `${name} at ${dir} is ${sizeGb} GiB, over the ${limitGb} GiB limit; ${action} before commit`
+      );
+      try {
+        return await trim(dir, limitBytes, sizeBytes) || trimmed;
+      } catch (error2) {
+        core3.warning(
+          `Failed to trim ${name} at ${dir}: ${error2 instanceof Error ? error2.message : String(error2)}`
+        );
+        return trimmed;
+      }
+    })
+  );
+  return results.some(Boolean);
+}
+
+// src/unmount.ts
+var execAsync2 = promisify3(exec2);
+async function commitStickydisk(exposeId, stickyDiskKey, fsDiskUsageBytes) {
+  core4.info(
     `Committing sticky disk ${stickyDiskKey} with expose ID ${exposeId}`
   );
   if (!exposeId || !stickyDiskKey) {
-    core3.warning(
+    core4.warning(
       "No expose ID or sticky disk key found, cannot report sticky disk to Blacksmith"
     );
     return;
@@ -25656,30 +25818,30 @@ async function commitStickydisk(exposeId, stickyDiskKey, fsDiskUsageBytes) {
     };
     if (fsDiskUsageBytes !== null && fsDiskUsageBytes > 0) {
       commitRequest.fsDiskUsageBytes = BigInt(fsDiskUsageBytes);
-      core3.debug(`Reporting fs usage: ${fsDiskUsageBytes} bytes`);
+      core4.debug(`Reporting fs usage: ${fsDiskUsageBytes} bytes`);
     } else {
-      core3.debug(
+      core4.debug(
         "No fs usage data available, storage agent will use fallback sizing"
       );
     }
     await client.commitStickyDisk(commitRequest, {
       timeoutMs: 3e4
     });
-    core3.info(
+    core4.info(
       `Successfully committed sticky disk ${stickyDiskKey} with expose ID ${exposeId}`
     );
   } catch (error2) {
-    core3.warning(
+    core4.warning(
       `Error committing sticky disk: ${error2 instanceof Error ? error2.message : String(error2)}`
     );
   }
 }
 async function cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey) {
-  core3.info(
+  core4.info(
     `Cleaning up sticky disk ${stickyDiskKey} with expose ID ${exposeId}`
   );
   if (!exposeId || !stickyDiskKey) {
-    core3.warning(
+    core4.warning(
       "No expose ID or sticky disk key found, cannot report sticky disk to Blacksmith"
     );
     return;
@@ -25701,29 +25863,29 @@ async function cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey) {
       }
     );
   } catch (error2) {
-    core3.warning(
+    core4.warning(
       `Error reporting build failed: ${error2 instanceof Error ? error2.message : String(error2)}`
     );
   }
 }
 async function getDeviceFromMount(mountPoint) {
   try {
-    const { stdout } = await execAsync(`findmnt -n -o SOURCE "${mountPoint}"`);
+    const { stdout } = await execAsync2(`findmnt -n -o SOURCE "${mountPoint}"`);
     const device = stdout.trim();
     if (device) {
       return device;
     }
   } catch {
-    core3.info(`findmnt failed for ${mountPoint}, trying mount command`);
+    core4.info(`findmnt failed for ${mountPoint}, trying mount command`);
   }
   try {
-    const { stdout } = await execAsync(`mount | grep " ${mountPoint} "`);
+    const { stdout } = await execAsync2(`mount | grep " ${mountPoint} "`);
     const match = stdout.match(/^(\/dev\/\S+)/);
     if (match) {
       return match[1];
     }
   } catch {
-    core3.info(`mount grep failed for ${mountPoint}`);
+    core4.info(`mount grep failed for ${mountPoint}`);
   }
   return null;
 }
@@ -25732,71 +25894,71 @@ var TIMEOUT_EXIT_CODE = 124;
 async function flushBlockDevice(devicePath) {
   const deviceName = devicePath.replace("/dev/", "");
   if (!deviceName) {
-    core3.info(`Could not extract device name from ${devicePath}`);
+    core4.info(`Could not extract device name from ${devicePath}`);
     return;
   }
   const statPath = `/sys/block/${deviceName}/stat`;
   let beforeStats = "";
   try {
-    const { stdout } = await execAsync(`cat ${statPath}`);
+    const { stdout } = await execAsync2(`cat ${statPath}`);
     beforeStats = stdout.trim();
   } catch {
-    core3.info(`Could not read block device stats before flush: ${statPath}`);
+    core4.info(`Could not read block device stats before flush: ${statPath}`);
   }
   const startTime = Date.now();
   try {
-    const { stdout, stderr } = await execAsync(
+    const { stdout, stderr } = await execAsync2(
       `timeout ${FLUSH_TIMEOUT_SECS} sudo blockdev --flushbufs ${devicePath}; echo "EXIT_CODE:$?"`
     );
     const duration = Date.now() - startTime;
     const exitCodeMatch = stdout.match(/EXIT_CODE:(\d+)/);
     const exitCode = exitCodeMatch ? parseInt(exitCodeMatch[1], 10) : 0;
     if (exitCode === TIMEOUT_EXIT_CODE) {
-      core3.info(
+      core4.info(
         `guest flush timed out for ${devicePath} after ${FLUSH_TIMEOUT_SECS}s`
       );
       return;
     }
     if (exitCode !== 0) {
-      core3.info(
+      core4.info(
         `guest flush failed for ${devicePath} after ${duration}ms: exit code ${exitCode}, stderr: ${stderr}`
       );
       return;
     }
     let afterStats = "";
     try {
-      const { stdout: stdout2 } = await execAsync(`cat ${statPath}`);
+      const { stdout: stdout2 } = await execAsync2(`cat ${statPath}`);
       afterStats = stdout2.trim();
     } catch {
-      core3.info(`Could not read block device stats after flush: ${statPath}`);
+      core4.info(`Could not read block device stats after flush: ${statPath}`);
     }
-    core3.info(
+    core4.info(
       `guest flush duration: ${duration}ms, device: ${devicePath}, before_stats: ${beforeStats}, after_stats: ${afterStats}`
     );
   } catch (error2) {
     const duration = Date.now() - startTime;
     const errorMsg = error2 instanceof Error ? error2.message : String(error2);
-    core3.info(
+    core4.info(
       `guest flush failed for ${devicePath} after ${duration}ms: ${errorMsg}`
     );
   }
 }
 function shouldCommitOnChange(fsDiskUsageBytes, initialUsageBytesStr) {
   if (!initialUsageBytesStr) {
-    core3.info(
+    core4.info(
       "No initial usage recorded, committing to be safe (on-change mode)"
     );
     return true;
   }
   const initialUsageBytes = parseInt(initialUsageBytesStr, 10);
   if (isNaN(initialUsageBytes)) {
-    core3.info(
+    core4.info(
       "Invalid initial usage value, committing to be safe (on-change mode)"
     );
     return true;
   }
   if (fsDiskUsageBytes === null) {
-    core3.info(
+    core4.info(
       "Could not determine current usage, committing to be safe (on-change mode)"
     );
     return true;
@@ -25804,17 +25966,18 @@ function shouldCommitOnChange(fsDiskUsageBytes, initialUsageBytesStr) {
   const delta = Math.abs(fsDiskUsageBytes - initialUsageBytes);
   const thresholdBytes = 4096;
   if (delta <= thresholdBytes) {
-    core3.info(
+    core4.info(
       `Filesystem unchanged (initial: ${initialUsageBytes} bytes, current: ${fsDiskUsageBytes} bytes, delta: ${delta} bytes <= ${thresholdBytes} byte threshold). Skipping commit (on-change mode).`
     );
     return false;
   }
-  core3.info(
+  core4.info(
     `Filesystem changed (initial: ${initialUsageBytes} bytes, current: ${fsDiskUsageBytes} bytes, delta: ${delta} bytes). Committing (on-change mode).`
   );
   return true;
 }
-async function runUnmount() {
+async function runUnmount(options) {
+  const { goCaching } = options;
   const stickyDiskPath = (0, import_core.getState)("STICKYDISK_PATH");
   const exposeId = (0, import_core.getState)("STICKYDISK_EXPOSE_ID");
   const stickyDiskKey = (0, import_core.getState)("STICKYDISK_KEY");
@@ -25825,22 +25988,22 @@ async function runUnmount() {
   const wasFormatted = (0, import_core.getState)("STICKYDISK_WAS_FORMATTED");
   const stickyDiskError = (0, import_core.getState)("STICKYDISK_ERROR") === "true";
   if (!stickyDiskPath) {
-    core3.debug("No STICKYDISK_PATH in state, skipping unmount");
+    core4.debug("No STICKYDISK_PATH in state, skipping unmount");
     return;
   }
   const logNotMounted = () => {
     if (stickyDiskError) {
-      core3.info(
+      core4.info(
         `Skipping unmount and commit for ${stickyDiskPath}: the sticky disk mount failed during setup, so there is nothing to unmount and committing could clobber existing cached data`
       );
     } else {
-      core3.debug(`${stickyDiskPath} is not mounted, skipping unmount`);
+      core4.debug(`${stickyDiskPath} is not mounted, skipping unmount`);
     }
   };
   try {
     let devicePath = null;
     try {
-      const { stdout: mountOutput } = await execAsync(
+      const { stdout: mountOutput } = await execAsync2(
         `mount | grep "${stickyDiskPath}"`
       );
       if (!mountOutput) {
@@ -25849,7 +26012,7 @@ async function runUnmount() {
       }
       devicePath = await getDeviceFromMount(stickyDiskPath);
       if (devicePath) {
-        core3.info(
+        core4.info(
           `Found device ${devicePath} for mount point ${stickyDiskPath}`
         );
       }
@@ -25857,109 +26020,115 @@ async function runUnmount() {
       logNotMounted();
       return;
     }
-    await execAsync("sync");
+    let goCachesTrimmed = false;
+    if (goCaching) {
+      goCachesTrimmed = await trimGoCaches(stickyDiskPath);
+    }
+    await execAsync2("sync");
     let fsDiskUsageBytes = null;
     try {
-      const { stdout } = await execAsync(
+      const { stdout } = await execAsync2(
         `df -B1 --output=used "${stickyDiskPath}" | tail -n1`
       );
       const parsedValue = parseInt(stdout.trim(), 10);
       if (isNaN(parsedValue) || parsedValue <= 0) {
-        core3.warning(
+        core4.warning(
           `Invalid filesystem usage value from df: "${stdout.trim()}". Will not report fs usage.`
         );
       } else {
         fsDiskUsageBytes = parsedValue;
-        core3.info(
+        core4.info(
           `Filesystem usage: ${fsDiskUsageBytes} bytes (${(fsDiskUsageBytes / (1 << 30)).toFixed(2)} GiB)`
         );
       }
     } catch (error2) {
       const errorMsg = error2 instanceof Error ? error2.message : String(error2);
-      core3.warning(
+      core4.warning(
         `Failed to get filesystem usage: ${errorMsg}. Will not report fs usage.`
       );
     }
-    await execAsync("sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'");
+    await execAsync2("sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'");
     for (let attempt = 1; attempt <= 10; attempt++) {
       try {
-        await execAsync(`sudo umount "${stickyDiskPath}"`);
-        core3.info(`Successfully unmounted ${stickyDiskPath}`);
+        await execAsync2(`sudo umount "${stickyDiskPath}"`);
+        core4.info(`Successfully unmounted ${stickyDiskPath}`);
         break;
       } catch (error2) {
         if (attempt === 10) {
           throw error2;
         }
-        core3.warning(`Unmount failed, retrying (${attempt}/10)...`);
+        core4.warning(`Unmount failed, retrying (${attempt}/10)...`);
         await new Promise((resolve) => setTimeout(resolve, 300));
       }
     }
     if (devicePath) {
       await flushBlockDevice(devicePath);
     } else {
-      core3.info(
+      core4.info(
         "Skipping durability flush: device path not found for mount point"
       );
     }
     if (commitIntent === CommitIntent2.NEVER) {
-      core3.info(
+      core4.info(
         "Commit mode is 'false', skipping sticky disk commit (read-only consumer)"
       );
       await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey);
       return;
     }
     if (commitIntent === CommitIntent2.IF_MISSING && wasFormatted !== "true") {
-      core3.info(
+      core4.info(
         "Commit mode is 'if-missing' and a snapshot already existed at mount time (disk was not freshly formatted). Skipping commit."
       );
       await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey);
       return;
     }
-    if (commitIntent === CommitIntent2.ON_CHANGE && !shouldCommitOnChange(fsDiskUsageBytes, initialUsageBytesStr)) {
+    if (commitIntent === CommitIntent2.ON_CHANGE && // Trimming removes cache content, so the disk has changed even if the
+    // measured usage ends up close to its pre-job value.
+    !goCachesTrimmed && !shouldCommitOnChange(fsDiskUsageBytes, initialUsageBytesStr)) {
       await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey);
       return;
     }
     if (!stickyDiskError) {
-      core3.info(
+      core4.info(
         "Checking for previous step failures before committing sticky disk"
       );
       const failureCheck = await checkPreviousStepFailures();
       if (failureCheck.error) {
-        core3.warning(
+        core4.warning(
           `Unable to check for previous step failures: ${failureCheck.error}`
         );
-        core3.warning(
+        core4.warning(
           "Skipping sticky disk commit due to ambiguity in failure detection"
         );
         await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey);
       } else if (failureCheck.hasFailures) {
-        core3.warning(
+        core4.warning(
           `Found ${failureCheck.failedCount} failed/cancelled steps in previous workflow steps`
         );
         if (failureCheck.failedSteps) {
           failureCheck.failedSteps.forEach((step) => {
-            core3.warning(
+            core4.warning(
               `  - Step: ${step.stepName || step.action || "unknown"} (${step.result})`
             );
           });
         }
-        core3.warning(
+        core4.warning(
           "Skipping sticky disk commit due to previous step failures"
         );
         await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey);
       } else {
-        core3.info("No previous step failures detected, committing sticky disk");
+        core4.info("No previous step failures detected, committing sticky disk");
         await commitStickydisk(exposeId, stickyDiskKey, fsDiskUsageBytes);
       }
     } else {
-      core3.warning(
+      core4.warning(
         "Skipping sticky disk commit due to sticky disk error during setup"
       );
       await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey);
     }
   } catch (error2) {
     if (error2 instanceof Error) {
-      core3.warning(
+      core4.warning(
         `Failed to cleanup and commit sticky disk at ${stickyDiskPath}: ${error2}`
       );
     }
@@ -25967,7 +26136,7 @@ async function runUnmount() {
 }
 
 // src/bin/post.ts
-runUnmount();
+runUnmount({ goCaching: false });
 /*! Bundled license information:
 
 undici/lib/fetch/body.js:

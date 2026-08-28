@@ -5,6 +5,7 @@ import { getState } from "@actions/core";
 import { createStickyDiskClient } from "./utils";
 import { CommitIntent, commitIntentFromMode } from "./commit-intent";
 import { checkPreviousStepFailures } from "./step-checker";
+import { trimGoCaches } from "./go-cache";
 
 const execAsync = promisify(exec);
 
@@ -231,7 +232,12 @@ function shouldCommitOnChange(
   return true;
 }
 
-export async function runUnmount(): Promise<void> {
+export interface UnmountOptions {
+  goCaching: boolean;
+}
+
+export async function runUnmount(options: UnmountOptions): Promise<void> {
+  const { goCaching } = options;
   const stickyDiskPath = getState("STICKYDISK_PATH");
   const exposeId = getState("STICKYDISK_EXPOSE_ID");
   const stickyDiskKey = getState("STICKYDISK_KEY");
@@ -278,6 +284,13 @@ export async function runUnmount(): Promise<void> {
       // grep returns non-zero if no match found
       logNotMounted();
       return;
+    }
+
+    // Trim oversized Go caches while the disk is still mounted so the
+    // committed snapshot stays bounded.
+    let goCachesTrimmed = false;
+    if (goCaching) {
+      goCachesTrimmed = await trimGoCaches(stickyDiskPath);
     }
 
     // Ensure all pending writes are flushed to disk before collecting usage.
@@ -356,6 +369,9 @@ export async function runUnmount(): Promise<void> {
 
     if (
       commitIntent === CommitIntent.ON_CHANGE &&
+      // Trimming removes cache content, so the disk has changed even if the
+      // measured usage ends up close to its pre-job value.
+      !goCachesTrimmed &&
       !shouldCommitOnChange(fsDiskUsageBytes, initialUsageBytesStr)
     ) {
       await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey);

@@ -3,6 +3,8 @@ import { build } from "esbuild";
 const bundles = [
   ["src/bin/main.ts", "dist/index.js"],
   ["src/bin/post.ts", "dist/post/index.js"],
+  ["src/bin/go-main.ts", "dist/go/index.js"],
+  ["src/bin/go-post.ts", "dist/go/post/index.js"],
 ];
 
 for (const [entry, outfile] of bundles) {

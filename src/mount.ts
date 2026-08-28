@@ -5,6 +5,7 @@ import { exec } from "child_process";
 import * as path from "path";
 import { createStickyDiskClient, getAgentEndpoint } from "./utils";
 import { CommitIntent, commitIntentFromMode } from "./commit-intent";
+import { setupGoCaches } from "./go-cache";
 import {
   getWorkspaceLocalParentToChown,
   normalizeMountPath,
@@ -248,12 +249,20 @@ async function getInitialDiskUsage(
   return null;
 }
 
-export async function runMount(): Promise<void> {
+export interface MountOptions {
+  goCaching: boolean;
+  // Used when the key input is empty (the go action computes its default key
+  // in code, unlike the base action where the input is required).
+  defaultKey?: string;
+}
+
+export async function runMount(options: MountOptions): Promise<void> {
   let stickyDiskError: Error | undefined;
   let exposeId: string | undefined;
   let device = "";
   let wasFormatted = false;
-  const stickyDiskKey = getInput("key");
+  const { goCaching } = options;
+  const stickyDiskKey = getInput("key") || options.defaultKey || "";
   const stickyDiskPath = normalizeMountPath(getInput("path"));
   const commitMode = getInput("commit") || "true";
   const commitIntent = commitIntentFromMode(commitMode);
@@ -268,6 +277,9 @@ export async function runMount(): Promise<void> {
       `BLACKSMITH_AGENT_ADDR or BLACKSMITH_STICKY_DISK_GRPC_PORT is not set; sticky disks are unavailable on this runner. Creating ${stickyDiskPath} as a plain directory instead (contents will not persist across runs).`,
     );
     await ensureFallbackDirectory(stickyDiskPath);
+    if (goCaching) {
+      await setupGoCaches(stickyDiskPath);
+    }
     return;
   }
 
@@ -310,6 +322,10 @@ export async function runMount(): Promise<void> {
     // writable directory so downstream steps behave as if this were a fresh
     // sticky disk (a cache miss) rather than failing on a missing path.
     await ensureFallbackDirectory(stickyDiskPath);
+  }
+
+  if (goCaching) {
+    await setupGoCaches(stickyDiskPath);
   }
 
   // Record initial disk usage after mount for on-change detection

@@ -37,13 +37,14 @@ git add dist/
 ## Project Structure
 
 - `src/` - Source TypeScript files
-- `bin/` - Self-executing entry files, one per shipped bundle (main and post phases)
+- `bin/` - Self-executing entry files, one per shipped bundle (base and go actions, main and post phases)
 - `mount.ts` - Main-phase implementation (mounting the sticky disk)
 - `unmount.ts` - Post-phase implementation (unmounting and committing)
 - `step-checker.ts` - Checks for failed workflow steps
 - `utils.ts` - Utility functions
 - `dist/` - Compiled JavaScript output (auto-generated, should be committed)
-- `action.yml` - GitHub Action configuration
+- `action.yml` - GitHub Action configuration for the base action
+- `go/action.yml` - The Go caching action, running its own entries from `dist/go/`
 
 ## Important Notes
 

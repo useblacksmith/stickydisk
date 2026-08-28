@@ -1,3 +1,3 @@
 import { runMount } from "../mount";
 
-runMount();
+runMount({ goCaching: false });
