@@ -12,8 +12,8 @@ const execAsync = promisify(exec);
 export const GO_BUILD_CACHE_SUBDIR = "go-build";
 export const GO_MOD_CACHE_SUBDIR = "go-mod";
 
-export const DEFAULT_GO_BUILD_CACHE_LIMIT_GB = 10;
-export const DEFAULT_GO_MOD_CACHE_LIMIT_GB = 5;
+export const DEFAULT_GO_BUILD_CACHE_LIMIT_GB = 50;
+export const DEFAULT_GO_MOD_CACHE_LIMIT_GB = 15;
 
 export function parseCacheLimitGb(
   value: string,

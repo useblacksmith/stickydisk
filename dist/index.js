@@ -36513,8 +36513,8 @@ const execAsync = (0,external_util_.promisify)(external_child_process_.exec);
 // so both live side by side on a single sticky disk.
 const GO_BUILD_CACHE_SUBDIR = "go-build";
 const GO_MOD_CACHE_SUBDIR = "go-mod";
-const DEFAULT_GO_BUILD_CACHE_LIMIT_GB = 10;
-const DEFAULT_GO_MOD_CACHE_LIMIT_GB = 5;
+const DEFAULT_GO_BUILD_CACHE_LIMIT_GB = 50;
+const DEFAULT_GO_MOD_CACHE_LIMIT_GB = 15;
 function parseCacheLimitGb(value, defaultGb) {
     const trimmed = value.trim();
     if (!trimmed) {

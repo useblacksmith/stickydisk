@@ -22,11 +22,11 @@ inputs:
   go-build-cache-limit-gb:
     description: "Maximum size in GiB of the Go build cache (GOCACHE) before it is wiped after the job. Only used when go-caching is 'true'. Set to 0 to disable trimming."
     required: false
-    default: "10"
+    default: "50"
   go-mod-cache-limit-gb:
     description: "Maximum size in GiB of the Go module cache (GOMODCACHE) before it is wiped after the job. Only used when go-caching is 'true'. Set to 0 to disable trimming."
     required: false
-    default: "5"
+    default: "15"
 runs:
   using: "node24"
   main: "dist/index.js"
