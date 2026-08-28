@@ -16,15 +16,15 @@ inputs:
     required: false
     default: "true"
   go-caching:
-    description: "When 'true', configures the sticky disk as a Go cache: sets GOCACHE and GOMODCACHE to subdirectories of the mount path for subsequent steps, and wipes either cache after the job if it exceeds its size limit so the committed snapshot stays bounded. Opt-in; has no effect on other sticky disk usage."
+    description: "When 'true', configures the sticky disk as a Go cache: sets GOCACHE and GOMODCACHE to subdirectories of the mount path for subsequent steps, and trims either cache after the job if it exceeds its size limit so the committed snapshot stays bounded (least-recently-used entries are evicted from the build cache; the module cache is wiped). Opt-in; has no effect on other sticky disk usage."
     required: false
     default: "false"
   go-build-cache-limit-gb:
-    description: "Maximum size in GiB of the Go build cache (GOCACHE) before it is wiped after the job. Only used when go-caching is 'true'. Set to 0 to disable trimming."
+    description: "Maximum size in GiB of the Go build cache (GOCACHE). When exceeded, least-recently-used entries are evicted after the job until the cache fits. Only used when go-caching is 'true'. Set to 0 to disable trimming."
     required: false
     default: "50"
   go-mod-cache-limit-gb:
-    description: "Maximum size in GiB of the Go module cache (GOMODCACHE) before it is wiped after the job. Only used when go-caching is 'true'. Set to 0 to disable trimming."
+    description: "Maximum size in GiB of the Go module cache (GOMODCACHE) before it is wiped after the job (module cache entries carry no usage signal, so it is cleared wholesale). Only used when go-caching is 'true'. Set to 0 to disable trimming."
     required: false
     default: "15"
 runs:

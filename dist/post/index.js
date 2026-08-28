@@ -36619,6 +36619,8 @@ async function hasAnyStepFailed(runnerBasePath) {
     return result.hasFailures;
 }
 
+;// CONCATENATED MODULE: external "fs/promises"
+const promises_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("fs/promises");
 // EXTERNAL MODULE: external "os"
 var external_os_ = __nccwpck_require__(857);
 ;// CONCATENATED MODULE: ./src/path.ts
@@ -36653,6 +36655,8 @@ function getWorkspaceLocalParentToChown(mountPath, cwd = process.cwd()) {
 }
 
 ;// CONCATENATED MODULE: ./src/go-cache.ts
+
+
 
 
 
@@ -36712,23 +36716,74 @@ async function wipeDir(dir) {
     await execAsync(`sudo rm -rf ${path_shellQuote(dir)}`);
     await execAsync(`mkdir -p ${path_shellQuote(dir)}`);
 }
-// Wipes each Go cache directory that has grown past its size limit so the
-// committed snapshot stays bounded. A limit of 0 disables trimming for that
-// cache. Must run while the sticky disk is still mounted.
+const FIND_MAX_BUFFER_BYTES = 1024 * 1024 * 1024;
+// Evicts least-recently-used entries from a GOCACHE directory until it fits
+// within limitBytes. The go tool bumps a cache entry file's mtime when the
+// entry is used (at most once per hour), so file mtime is a usage signal, and
+// deleting individual entry files is safe: go treats a missing entry as a
+// cache miss and rebuilds it. Cache file names are hashes, so paths never
+// contain newlines.
+async function trimBuildCacheLru(dir, limitBytes, sizeBytes) {
+    const { stdout } = await execAsync(`find ${path_shellQuote(dir)} -type f -printf '%T@\\t%s\\t%p\\n' | sort -n`, { maxBuffer: FIND_MAX_BUFFER_BYTES });
+    let bytesToFree = sizeBytes - limitBytes;
+    const toDelete = [];
+    for (const line of stdout.split("\n")) {
+        if (bytesToFree <= 0) {
+            break;
+        }
+        if (!line) {
+            continue;
+        }
+        const [, sizeStr, ...pathParts] = line.split("\t");
+        const fileSize = parseInt(sizeStr, 10);
+        const filePath = pathParts.join("\t");
+        if (isNaN(fileSize) || !filePath) {
+            continue;
+        }
+        toDelete.push(filePath);
+        bytesToFree -= fileSize;
+    }
+    if (toDelete.length === 0) {
+        return;
+    }
+    const listFile = external_path_.join(external_os_.tmpdir(), `stickydisk-gocache-trim-${Date.now()}`);
+    await promises_namespaceObject.writeFile(listFile, toDelete.join("\n"));
+    try {
+        await execAsync(`xargs -a ${path_shellQuote(listFile)} -d '\\n' rm -f --`, {
+            maxBuffer: FIND_MAX_BUFFER_BYTES,
+        });
+    }
+    finally {
+        await promises_namespaceObject.rm(listFile, { force: true });
+    }
+    lib_core.info(`Evicted ${toDelete.length} least-recently-used build cache entries`);
+}
+// Trims the Go caches so the committed snapshot stays bounded. A limit of 0
+// disables trimming for that cache. Must run while the sticky disk is still
+// mounted.
+//
+// GOCACHE is trimmed LRU per entry file (see trimBuildCacheLru). GOMODCACHE
+// is wiped entirely when over its limit: module cache entries are immutable
+// and their mtimes reflect download time rather than usage, and deleting
+// individual files out of an extracted module directory would corrupt it.
 async function trimGoCaches(stickyDiskPath, buildLimitGb, modLimitGb) {
     const caches = [
         {
             name: "GOCACHE",
             dir: goBuildCachePath(stickyDiskPath),
             limitGb: buildLimitGb,
+            trim: trimBuildCacheLru,
+            action: "evicting least-recently-used entries",
         },
         {
             name: "GOMODCACHE",
             dir: goModCachePath(stickyDiskPath),
             limitGb: modLimitGb,
+            trim: (dir) => wipeDir(dir),
+            action: "wiping it",
         },
     ];
-    for (const { name, dir, limitGb } of caches) {
+    for (const { name, dir, limitGb, trim, action } of caches) {
         if (limitGb <= 0) {
             lib_core.debug(`${name} size limit disabled, skipping trim`);
             continue;
@@ -36740,12 +36795,12 @@ async function trimGoCaches(stickyDiskPath, buildLimitGb, modLimitGb) {
         const limitBytes = limitGb * (1 << 30);
         const sizeGb = (sizeBytes / (1 << 30)).toFixed(2);
         if (sizeBytes > limitBytes) {
-            lib_core.info(`${name} at ${dir} is ${sizeGb} GiB, over the ${limitGb} GiB limit; wiping it before commit`);
+            lib_core.info(`${name} at ${dir} is ${sizeGb} GiB, over the ${limitGb} GiB limit; ${action} before commit`);
             try {
-                await wipeDir(dir);
+                await trim(dir, limitBytes, sizeBytes);
             }
             catch (error) {
-                lib_core.warning(`Failed to wipe ${name} at ${dir}: ${error instanceof Error ? error.message : String(error)}`);
+                lib_core.warning(`Failed to trim ${name} at ${dir}: ${error instanceof Error ? error.message : String(error)}`);
             }
         }
         else {

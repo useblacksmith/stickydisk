@@ -71,7 +71,7 @@ Blacksmith natively supports [Bazel remote caching](https://docs.blacksmith.sh/b
 
 ## Go Build and Module Cache
 
-Go projects benefit from persistent build and module caches, especially for large codebases with many dependencies. The `go-caching` option configures a single sticky disk to hold both caches: it exports `GOCACHE` and `GOMODCACHE` pointing at subdirectories of the mount path for all subsequent steps, and after the job wipes either cache if it has grown past its size limit so the committed snapshot stays bounded. The limits default to 50 GiB for the build cache and 15 GiB for the module cache, and can be tuned with `go-build-cache-limit-gb` and `go-mod-cache-limit-gb` (set to `0` to disable trimming).
+Go projects benefit from persistent build and module caches, especially for large codebases with many dependencies. The `go-caching` option configures a single sticky disk to hold both caches: it exports `GOCACHE` and `GOMODCACHE` pointing at subdirectories of the mount path for all subsequent steps, and after the job trims either cache if it has grown past its size limit so the committed snapshot stays bounded (least-recently-used entries are evicted from the build cache; the module cache is wiped since its entries carry no usage signal). The limits default to 50 GiB for the build cache and 15 GiB for the module cache, and can be tuned with `go-build-cache-limit-gb` and `go-mod-cache-limit-gb` (set to `0` to disable trimming).
 
 ```yaml
 jobs:
