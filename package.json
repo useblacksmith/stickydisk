@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "ncc build src/bin/main.ts -o dist && ncc build src/bin/post.ts -o dist/post",
+    "build": "node scripts/build.mjs",
     "format": "prettier --write --cache . !dist",
     "lint": "eslint",
     "test": "jest"
@@ -27,7 +27,7 @@
     "@types/jest": "^29.5.12",
     "@types/node": "^24.0.0",
     "@types/node-fetch": "^2.6.11",
-    "@vercel/ncc": "^0.38.1",
+    "esbuild": "^0.28.2",
     "eslint": "^9.15.0",
     "jest": "^29.7.0",
     "prettier": "^3.3.3",
