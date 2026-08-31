@@ -25526,6 +25526,286 @@ import { exec } from "child_process";
 import * as fs from "fs/promises";
 import * as path2 from "path";
 
+// node_modules/yocto-queue/index.js
+var Node = class {
+  value;
+  next;
+  constructor(value) {
+    this.value = value;
+  }
+};
+var Queue = class {
+  #head;
+  #tail;
+  #size;
+  constructor() {
+    this.clear();
+  }
+  enqueue(value) {
+    const node = new Node(value);
+    if (this.#head) {
+      this.#tail.next = node;
+      this.#tail = node;
+    } else {
+      this.#head = node;
+      this.#tail = node;
+    }
+    this.#size++;
+  }
+  dequeue() {
+    const current = this.#head;
+    if (!current) {
+      return;
+    }
+    this.#head = this.#head.next;
+    this.#size--;
+    if (!this.#head) {
+      this.#tail = void 0;
+    }
+    return current.value;
+  }
+  peek() {
+    if (!this.#head) {
+      return;
+    }
+    return this.#head.value;
+  }
+  clear() {
+    this.#head = void 0;
+    this.#tail = void 0;
+    this.#size = 0;
+  }
+  get size() {
+    return this.#size;
+  }
+  *[Symbol.iterator]() {
+    let current = this.#head;
+    while (current) {
+      yield current.value;
+      current = current.next;
+    }
+  }
+  *drain() {
+    while (this.#head) {
+      yield this.dequeue();
+    }
+  }
+};
+
+// node_modules/p-limit/index.js
+function pLimit(concurrency) {
+  let rejectOnClear = false;
+  if (typeof concurrency === "object") {
+    ({ concurrency, rejectOnClear = false } = concurrency);
+  }
+  validateConcurrency(concurrency);
+  if (typeof rejectOnClear !== "boolean") {
+    throw new TypeError("Expected `rejectOnClear` to be a boolean");
+  }
+  const queue = new Queue();
+  let activeCount = 0;
+  const resumeNext = () => {
+    if (activeCount < concurrency && queue.size > 0) {
+      activeCount++;
+      queue.dequeue().run();
+    }
+  };
+  const next = () => {
+    activeCount--;
+    resumeNext();
+  };
+  const run = async (function_, resolve2, arguments_) => {
+    const result = (async () => function_(...arguments_))();
+    resolve2(result);
+    try {
+      await result;
+    } catch {
+    }
+    next();
+  };
+  const enqueue = (function_, resolve2, reject, arguments_) => {
+    const queueItem = { reject };
+    new Promise((internalResolve) => {
+      queueItem.run = internalResolve;
+      queue.enqueue(queueItem);
+    }).then(run.bind(void 0, function_, resolve2, arguments_));
+    if (activeCount < concurrency) {
+      resumeNext();
+    }
+  };
+  const generator = (function_, ...arguments_) => new Promise((resolve2, reject) => {
+    enqueue(function_, resolve2, reject, arguments_);
+  });
+  Object.defineProperties(generator, {
+    activeCount: {
+      get: () => activeCount
+    },
+    pendingCount: {
+      get: () => queue.size
+    },
+    clearQueue: {
+      value() {
+        if (!rejectOnClear) {
+          queue.clear();
+          return;
+        }
+        const abortError = AbortSignal.abort().reason;
+        while (queue.size > 0) {
+          queue.dequeue().reject(abortError);
+        }
+      }
+    },
+    concurrency: {
+      get: () => concurrency,
+      set(newConcurrency) {
+        validateConcurrency(newConcurrency);
+        concurrency = newConcurrency;
+        queueMicrotask(() => {
+          while (activeCount < concurrency && queue.size > 0) {
+            resumeNext();
+          }
+        });
+      }
+    },
+    map: {
+      async value(iterable, function_) {
+        const promises = Array.from(iterable, (value, index) => generator(function_, value, index));
+        return Promise.all(promises);
+      }
+    }
+  });
+  return generator;
+}
+function validateConcurrency(concurrency) {
+  if (!((Number.isInteger(concurrency) || concurrency === Number.POSITIVE_INFINITY) && concurrency > 0)) {
+    throw new TypeError("Expected `concurrency` to be a number from 1 and up");
+  }
+}
+
+// node_modules/p-map/index.js
+async function pMap(iterable, mapper, {
+  concurrency = Number.POSITIVE_INFINITY,
+  stopOnError = true,
+  signal
+} = {}) {
+  return new Promise((resolve_, reject_) => {
+    if (iterable[Symbol.iterator] === void 0 && iterable[Symbol.asyncIterator] === void 0) {
+      throw new TypeError(`Expected \`input\` to be either an \`Iterable\` or \`AsyncIterable\`, got (${typeof iterable})`);
+    }
+    if (typeof mapper !== "function") {
+      throw new TypeError("Mapper function is required");
+    }
+    if (!(Number.isSafeInteger(concurrency) && concurrency >= 1 || concurrency === Number.POSITIVE_INFINITY)) {
+      throw new TypeError(`Expected \`concurrency\` to be an integer from 1 and up or \`Infinity\`, got \`${concurrency}\` (${typeof concurrency})`);
+    }
+    const result = [];
+    const errors = [];
+    const skippedIndexesMap = /* @__PURE__ */ new Map();
+    let isRejected = false;
+    let isResolved = false;
+    let isIterableDone = false;
+    let resolvingCount = 0;
+    let currentIndex = 0;
+    const iterator = iterable[Symbol.iterator] === void 0 ? iterable[Symbol.asyncIterator]() : iterable[Symbol.iterator]();
+    const signalListener = () => {
+      reject(signal.reason);
+    };
+    const cleanup = () => {
+      signal?.removeEventListener("abort", signalListener);
+    };
+    const resolve2 = (value) => {
+      resolve_(value);
+      cleanup();
+    };
+    const reject = (reason) => {
+      isRejected = true;
+      isResolved = true;
+      reject_(reason);
+      cleanup();
+    };
+    if (signal) {
+      if (signal.aborted) {
+        reject(signal.reason);
+        return;
+      }
+      signal.addEventListener("abort", signalListener, { once: true });
+    }
+    const next = async () => {
+      if (isResolved) {
+        return;
+      }
+      const nextItem = await iterator.next();
+      const index = currentIndex;
+      currentIndex++;
+      if (nextItem.done) {
+        isIterableDone = true;
+        if (resolvingCount === 0 && !isResolved) {
+          if (!stopOnError && errors.length > 0) {
+            reject(new AggregateError(errors));
+            return;
+          }
+          isResolved = true;
+          if (skippedIndexesMap.size === 0) {
+            resolve2(result);
+            return;
+          }
+          const pureResult = [];
+          for (const [index2, value] of result.entries()) {
+            if (skippedIndexesMap.get(index2) === pMapSkip) {
+              continue;
+            }
+            pureResult.push(value);
+          }
+          resolve2(pureResult);
+        }
+        return;
+      }
+      resolvingCount++;
+      (async () => {
+        try {
+          const element = await nextItem.value;
+          if (isResolved) {
+            return;
+          }
+          const value = await mapper(element, index);
+          if (value === pMapSkip) {
+            skippedIndexesMap.set(index, value);
+          }
+          result[index] = value;
+          resolvingCount--;
+          await next();
+        } catch (error2) {
+          if (stopOnError) {
+            reject(error2);
+          } else {
+            errors.push(error2);
+            resolvingCount--;
+            try {
+              await next();
+            } catch (error3) {
+              reject(error3);
+            }
+          }
+        }
+      })();
+    };
+    (async () => {
+      for (let index = 0; index < concurrency; index++) {
+        try {
+          await next();
+        } catch (error2) {
+          reject(error2);
+          break;
+        }
+        if (isIterableDone || isRejected) {
+          break;
+        }
+      }
+    })();
+  });
+}
+var pMapSkip = /* @__PURE__ */ Symbol("skip");
+
 // src/path.ts
 import { homedir } from "os";
 import * as path from "path";
@@ -25563,42 +25843,26 @@ var GO_BUILD_CACHE_LIMIT_GB = 50;
 var GO_MOD_CACHE_LIMIT_GB = 15;
 var GO_BUILD_CACHE_MAX_AGE_DAYS = 7;
 var IO_CONCURRENCY = 64;
-async function mapPool(items, fn) {
-  const out = new Array(items.length);
-  let next = 0;
-  await Promise.all(
-    Array.from({ length: Math.min(IO_CONCURRENCY, items.length) }, async () => {
-      for (; ; ) {
-        const i = next++;
-        if (i >= items.length) {
-          break;
-        }
-        out[i] = await fn(items[i]);
-      }
-    })
-  );
-  return out;
-}
 async function scanCache(dir) {
+  const limit = pLimit(IO_CONCURRENCY);
   const filePaths = [];
-  const pending = [dir];
-  while (pending.length > 0) {
-    const batch = pending.splice(0, IO_CONCURRENCY);
-    await Promise.all(
-      batch.map(async (d) => {
-        const entries = await fs.readdir(d, { withFileTypes: true });
-        for (const entry of entries) {
-          const p = path2.join(d, entry.name);
-          if (entry.isDirectory()) {
-            pending.push(p);
-          } else if (entry.isFile()) {
-            filePaths.push(p);
-          }
-        }
-      })
-    );
-  }
-  const stats = await mapPool(filePaths, (f) => fs.stat(f).catch(() => null));
+  const walk = async (d) => {
+    const entries = await limit(() => fs.readdir(d, { withFileTypes: true }));
+    const subdirs = [];
+    for (const entry of entries) {
+      const p = path2.join(d, entry.name);
+      if (entry.isDirectory()) {
+        subdirs.push(walk(p));
+      } else if (entry.isFile()) {
+        filePaths.push(p);
+      }
+    }
+    await Promise.all(subdirs);
+  };
+  await walk(dir);
+  const stats = await pMap(filePaths, (f) => fs.stat(f).catch(() => null), {
+    concurrency: IO_CONCURRENCY
+  });
   const files = [];
   for (let i = 0; i < filePaths.length; i++) {
     const stat2 = stats[i];
@@ -25669,7 +25933,9 @@ var GoCacheManager = class {
     let trimmed = false;
     if (stale.length > 0) {
       try {
-        await mapPool(stale, (f) => fs.rm(f.path, { force: true }));
+        await pMap(stale, (f) => fs.rm(f.path, { force: true }), {
+          concurrency: IO_CONCURRENCY
+        });
         trimmed = true;
         core2.info(
           `Evicted ${stale.length} build cache entries unused for more than ${GO_BUILD_CACHE_MAX_AGE_DAYS} days`
@@ -25704,7 +25970,9 @@ var GoCacheManager = class {
         toDelete.push(file);
         sizeBytes -= file.sizeBytes;
       }
-      await mapPool(toDelete, (f) => fs.rm(f.path, { force: true }));
+      await pMap(toDelete, (f) => fs.rm(f.path, { force: true }), {
+        concurrency: IO_CONCURRENCY
+      });
       core2.info(
         `Evicted ${toDelete.length} least-recently-used build cache entries`
       );

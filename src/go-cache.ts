@@ -3,6 +3,8 @@ import { promisify } from "util";
 import { exec } from "child_process";
 import * as fs from "fs/promises";
 import * as path from "path";
+import pLimit from "p-limit";
+import pMap from "p-map";
 import { shellQuote } from "./path";
 
 const execAsync = promisify(exec);
@@ -31,51 +33,31 @@ interface CacheFile {
   sizeBytes: number;
 }
 
-async function mapPool<T, R>(
-  items: T[],
-  fn: (item: T) => Promise<R>,
-): Promise<R[]> {
-  const out = new Array<R>(items.length);
-  let next = 0;
-  await Promise.all(
-    Array.from({ length: Math.min(IO_CONCURRENCY, items.length) }, async () => {
-      for (;;) {
-        const i = next++;
-        if (i >= items.length) {
-          break;
-        }
-        out[i] = await fn(items[i]);
-      }
-    }),
-  );
-  return out;
-}
-
 /**
  * Walks dir once and stats every file with concurrent I/O. Files that vanish
  * mid-scan are skipped.
  */
 async function scanCache(dir: string): Promise<CacheFile[]> {
+  const limit = pLimit(IO_CONCURRENCY);
   const filePaths: string[] = [];
-  const pending = [dir];
-  while (pending.length > 0) {
-    const batch = pending.splice(0, IO_CONCURRENCY);
-    await Promise.all(
-      batch.map(async (d) => {
-        const entries = await fs.readdir(d, { withFileTypes: true });
-        for (const entry of entries) {
-          const p = path.join(d, entry.name);
-          if (entry.isDirectory()) {
-            pending.push(p);
-          } else if (entry.isFile()) {
-            filePaths.push(p);
-          }
-        }
-      }),
-    );
-  }
+  const walk = async (d: string): Promise<void> => {
+    const entries = await limit(() => fs.readdir(d, { withFileTypes: true }));
+    const subdirs: Promise<void>[] = [];
+    for (const entry of entries) {
+      const p = path.join(d, entry.name);
+      if (entry.isDirectory()) {
+        subdirs.push(walk(p));
+      } else if (entry.isFile()) {
+        filePaths.push(p);
+      }
+    }
+    await Promise.all(subdirs);
+  };
+  await walk(dir);
 
-  const stats = await mapPool(filePaths, (f) => fs.stat(f).catch(() => null));
+  const stats = await pMap(filePaths, (f) => fs.stat(f).catch(() => null), {
+    concurrency: IO_CONCURRENCY,
+  });
   const files: CacheFile[] = [];
   for (let i = 0; i < filePaths.length; i++) {
     const stat = stats[i];
@@ -172,7 +154,9 @@ export class GoCacheManager {
     let trimmed = false;
     if (stale.length > 0) {
       try {
-        await mapPool(stale, (f) => fs.rm(f.path, { force: true }));
+        await pMap(stale, (f) => fs.rm(f.path, { force: true }), {
+          concurrency: IO_CONCURRENCY,
+        });
         trimmed = true;
         core.info(
           `Evicted ${stale.length} build cache entries unused for more than ${GO_BUILD_CACHE_MAX_AGE_DAYS} days`,
@@ -209,7 +193,9 @@ export class GoCacheManager {
         toDelete.push(file);
         sizeBytes -= file.sizeBytes;
       }
-      await mapPool(toDelete, (f) => fs.rm(f.path, { force: true }));
+      await pMap(toDelete, (f) => fs.rm(f.path, { force: true }), {
+        concurrency: IO_CONCURRENCY,
+      });
       core.info(
         `Evicted ${toDelete.length} least-recently-used build cache entries`,
       );
