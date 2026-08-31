@@ -25842,11 +25842,6 @@ function getWorkspaceLocalParentToChown(mountPath, cwd = process.cwd()) {
 
 // src/go-cache.ts
 var execAsync = promisify2(exec);
-var GO_BUILD_CACHE_SUBDIR = "go/build";
-var GO_MOD_CACHE_SUBDIR = "go/mod";
-var GO_BUILD_CACHE_LIMIT_GB = 50;
-var GO_MOD_CACHE_LIMIT_GB = 15;
-var GO_BUILD_CACHE_MAX_AGE_DAYS = 7;
 var IO_CONCURRENCY = 64;
 async function scanCache(dir) {
   const limit = pLimit(IO_CONCURRENCY);
@@ -25886,11 +25881,11 @@ function toGb(bytes) {
 }
 var GoCacheManager = class {
   constructor(stickyDiskPath, opts = {}) {
-    this.buildCachePath = path2.join(stickyDiskPath, GO_BUILD_CACHE_SUBDIR);
-    this.modCachePath = path2.join(stickyDiskPath, GO_MOD_CACHE_SUBDIR);
-    this.buildCacheLimitBytes = opts.buildCacheLimitBytes ?? GO_BUILD_CACHE_LIMIT_GB * (1 << 30);
-    this.buildCacheMaxAgeMs = opts.buildCacheMaxAgeMs ?? GO_BUILD_CACHE_MAX_AGE_DAYS * 86400 * 1e3;
-    this.modCacheLimitBytes = opts.modCacheLimitBytes ?? GO_MOD_CACHE_LIMIT_GB * (1 << 30);
+    this.buildCachePath = path2.join(stickyDiskPath, "go/build");
+    this.modCachePath = path2.join(stickyDiskPath, "go/mod");
+    this.buildCacheLimitBytes = opts.buildCacheLimitBytes ?? 50 * (1 << 30);
+    this.buildCacheMaxAgeMs = opts.buildCacheMaxAgeMs ?? 7 * 86400 * 1e3;
+    this.modCacheLimitBytes = opts.modCacheLimitBytes ?? 15 * (1 << 30);
     this.sudo = opts.sudo ?? true;
   }
   async setup() {
@@ -25943,7 +25938,7 @@ var GoCacheManager = class {
         });
         trimmed = true;
         core2.info(
-          `Evicted ${stale.length} build cache entries unused for more than ${GO_BUILD_CACHE_MAX_AGE_DAYS} days`
+          `Evicted ${stale.length} build cache entries unused for more than ${this.buildCacheMaxAgeMs / (86400 * 1e3)} days`
         );
       } catch (error2) {
         core2.warning(

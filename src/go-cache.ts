@@ -9,14 +9,6 @@ import { shellQuote } from "./path";
 
 const execAsync = promisify(exec);
 
-const GO_BUILD_CACHE_SUBDIR = "go/build";
-const GO_MOD_CACHE_SUBDIR = "go/mod";
-
-const GO_BUILD_CACHE_LIMIT_GB = 50;
-const GO_MOD_CACHE_LIMIT_GB = 15;
-
-const GO_BUILD_CACHE_MAX_AGE_DAYS = 7;
-
 /**
  * In-flight async fs ops. Async fs calls execute on the libuv threadpool
  * (sized 16 in uv-threadpool.ts), so this only needs to be comfortably above
@@ -93,14 +85,11 @@ export class GoCacheManager {
   private readonly sudo: boolean;
 
   constructor(stickyDiskPath: string, opts: GoCacheOptions = {}) {
-    this.buildCachePath = path.join(stickyDiskPath, GO_BUILD_CACHE_SUBDIR);
-    this.modCachePath = path.join(stickyDiskPath, GO_MOD_CACHE_SUBDIR);
-    this.buildCacheLimitBytes =
-      opts.buildCacheLimitBytes ?? GO_BUILD_CACHE_LIMIT_GB * (1 << 30);
-    this.buildCacheMaxAgeMs =
-      opts.buildCacheMaxAgeMs ?? GO_BUILD_CACHE_MAX_AGE_DAYS * 86400 * 1000;
-    this.modCacheLimitBytes =
-      opts.modCacheLimitBytes ?? GO_MOD_CACHE_LIMIT_GB * (1 << 30);
+    this.buildCachePath = path.join(stickyDiskPath, "go/build");
+    this.modCachePath = path.join(stickyDiskPath, "go/mod");
+    this.buildCacheLimitBytes = opts.buildCacheLimitBytes ?? 50 * (1 << 30);
+    this.buildCacheMaxAgeMs = opts.buildCacheMaxAgeMs ?? 7 * 86400 * 1000;
+    this.modCacheLimitBytes = opts.modCacheLimitBytes ?? 15 * (1 << 30);
     this.sudo = opts.sudo ?? true;
   }
 
@@ -159,7 +148,7 @@ export class GoCacheManager {
         });
         trimmed = true;
         core.info(
-          `Evicted ${stale.length} build cache entries unused for more than ${GO_BUILD_CACHE_MAX_AGE_DAYS} days`,
+          `Evicted ${stale.length} build cache entries unused for more than ${this.buildCacheMaxAgeMs / (86400 * 1000)} days`,
         );
       } catch (error) {
         core.warning(
