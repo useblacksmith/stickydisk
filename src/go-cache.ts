@@ -7,13 +7,13 @@ import { shellQuote } from "./path";
 
 const execAsync = promisify(exec);
 
-export const GO_BUILD_CACHE_SUBDIR = "go/build";
-export const GO_MOD_CACHE_SUBDIR = "go/mod";
+const GO_BUILD_CACHE_SUBDIR = "go/build";
+const GO_MOD_CACHE_SUBDIR = "go/mod";
 
-export const GO_BUILD_CACHE_LIMIT_GB = 50;
-export const GO_MOD_CACHE_LIMIT_GB = 15;
+const GO_BUILD_CACHE_LIMIT_GB = 50;
+const GO_MOD_CACHE_LIMIT_GB = 15;
 
-export const GO_BUILD_CACHE_MAX_AGE_DAYS = 7;
+const GO_BUILD_CACHE_MAX_AGE_DAYS = 7;
 
 /**
  * In-flight async fs ops. Async fs calls execute on the libuv threadpool
