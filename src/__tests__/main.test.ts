@@ -1,3 +1,5 @@
+import { describe, expect, it } from "vitest";
+
 describe("Stickydisk Action", () => {
   it("placeholder test", () => {
     // Placeholder test to satisfy CI requirements

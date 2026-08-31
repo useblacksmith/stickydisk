@@ -1,3 +1,4 @@
+import { describe, expect, it } from "vitest";
 import { goBuildCachePath, goModCachePath } from "../go-cache";
 
 describe("go cache paths", () => {
