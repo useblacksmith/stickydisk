@@ -184,18 +184,18 @@ class TestHarness {
     this.disk = path.join(tmp, "disk");
   }
 
-  manager(options: GoCacheOptions = {}): GoCacheManager {
-    return new GoCacheManager(this.disk, { sudo: false, ...options });
+  manager(opts: GoCacheOptions = {}): GoCacheManager {
+    return new GoCacheManager(this.disk, { sudo: false, ...opts });
   }
 
   /** Writes a file under GOCACHE and returns its absolute path. */
-  writeFile(rel: string, options?: TestFileOptions): Promise<string> {
-    return this.write(path.join(this.manager().buildCachePath, rel), options);
+  writeFile(rel: string, opts?: TestFileOptions): Promise<string> {
+    return this.write(path.join(this.manager().buildCachePath, rel), opts);
   }
 
   /** Writes a file under GOMODCACHE and returns its absolute path. */
-  writeModFile(rel: string, options?: TestFileOptions): Promise<string> {
-    return this.write(path.join(this.manager().modCachePath, rel), options);
+  writeModFile(rel: string, opts?: TestFileOptions): Promise<string> {
+    return this.write(path.join(this.manager().modCachePath, rel), opts);
   }
 
   private async write(
