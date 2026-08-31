@@ -25932,42 +25932,6 @@ function shellQuote(value) {
 // src/go-cache.ts
 var execAsync = promisify2(exec);
 var IO_CONCURRENCY = 64;
-async function scanCache(dir) {
-  const limit = pLimit(IO_CONCURRENCY);
-  const filePaths = [];
-  const walk = async (d) => {
-    const entries = await limit(() => fs2.readdir(d, { withFileTypes: true }));
-    const subdirs = [];
-    for (const entry of entries) {
-      const p = path2.join(d, entry.name);
-      if (entry.isDirectory()) {
-        subdirs.push(walk(p));
-      } else if (entry.isFile()) {
-        filePaths.push(p);
-      }
-    }
-    await Promise.all(subdirs);
-  };
-  await walk(dir);
-  const stats = await pMap(filePaths, (f) => fs2.stat(f).catch(() => null), {
-    concurrency: IO_CONCURRENCY
-  });
-  const files = [];
-  for (let i = 0; i < filePaths.length; i++) {
-    const stat2 = stats[i];
-    if (stat2) {
-      files.push({
-        path: filePaths[i],
-        mtimeMs: stat2.mtimeMs,
-        sizeBytes: stat2.blocks * 512
-      });
-    }
-  }
-  return files;
-}
-function toGb(bytes) {
-  return (bytes / (1 << 30)).toFixed(2);
-}
 var GoCacheManager = class {
   constructor(stickyDiskPath, opts = {}) {
     this.buildCachePath = path2.join(stickyDiskPath, "go/build");
@@ -26112,6 +26076,42 @@ var GoCacheManager = class {
     }
   }
 };
+async function scanCache(dir) {
+  const limit = pLimit(IO_CONCURRENCY);
+  const filePaths = [];
+  const walk = async (d) => {
+    const entries = await limit(() => fs2.readdir(d, { withFileTypes: true }));
+    const subdirs = [];
+    for (const entry of entries) {
+      const p = path2.join(d, entry.name);
+      if (entry.isDirectory()) {
+        subdirs.push(walk(p));
+      } else if (entry.isFile()) {
+        filePaths.push(p);
+      }
+    }
+    await Promise.all(subdirs);
+  };
+  await walk(dir);
+  const stats = await pMap(filePaths, (f) => fs2.stat(f).catch(() => null), {
+    concurrency: IO_CONCURRENCY
+  });
+  const files = [];
+  for (let i = 0; i < filePaths.length; i++) {
+    const stat2 = stats[i];
+    if (stat2) {
+      files.push({
+        path: filePaths[i],
+        mtimeMs: stat2.mtimeMs,
+        sizeBytes: stat2.blocks * 512
+      });
+    }
+  }
+  return files;
+}
+function toGb(bytes) {
+  return (bytes / (1 << 30)).toFixed(2);
+}
 
 // src/unmount.ts
 var execAsync2 = promisify3(exec2);

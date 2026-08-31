@@ -25,49 +25,6 @@ interface CacheFile {
   sizeBytes: number;
 }
 
-/**
- * Walks dir once and stats every file with concurrent I/O. Files that vanish
- * mid-scan are skipped.
- */
-async function scanCache(dir: string): Promise<CacheFile[]> {
-  const limit = pLimit(IO_CONCURRENCY);
-  const filePaths: string[] = [];
-  const walk = async (d: string): Promise<void> => {
-    const entries = await limit(() => fs.readdir(d, { withFileTypes: true }));
-    const subdirs: Promise<void>[] = [];
-    for (const entry of entries) {
-      const p = path.join(d, entry.name);
-      if (entry.isDirectory()) {
-        subdirs.push(walk(p));
-      } else if (entry.isFile()) {
-        filePaths.push(p);
-      }
-    }
-    await Promise.all(subdirs);
-  };
-  await walk(dir);
-
-  const stats = await pMap(filePaths, (f) => fs.stat(f).catch(() => null), {
-    concurrency: IO_CONCURRENCY,
-  });
-  const files: CacheFile[] = [];
-  for (let i = 0; i < filePaths.length; i++) {
-    const stat = stats[i];
-    if (stat) {
-      files.push({
-        path: filePaths[i],
-        mtimeMs: stat.mtimeMs,
-        sizeBytes: stat.blocks * 512,
-      });
-    }
-  }
-  return files;
-}
-
-function toGb(bytes: number): string {
-  return (bytes / (1 << 30)).toFixed(2);
-}
-
 export interface GoCacheOptions {
   buildCacheLimitBytes?: number;
   buildCacheMaxAgeMs?: number;
@@ -237,4 +194,47 @@ export class GoCacheManager {
       return false;
     }
   }
+}
+
+/**
+ * Walks dir once and stats every file with concurrent I/O. Files that vanish
+ * mid-scan are skipped.
+ */
+async function scanCache(dir: string): Promise<CacheFile[]> {
+  const limit = pLimit(IO_CONCURRENCY);
+  const filePaths: string[] = [];
+  const walk = async (d: string): Promise<void> => {
+    const entries = await limit(() => fs.readdir(d, { withFileTypes: true }));
+    const subdirs: Promise<void>[] = [];
+    for (const entry of entries) {
+      const p = path.join(d, entry.name);
+      if (entry.isDirectory()) {
+        subdirs.push(walk(p));
+      } else if (entry.isFile()) {
+        filePaths.push(p);
+      }
+    }
+    await Promise.all(subdirs);
+  };
+  await walk(dir);
+
+  const stats = await pMap(filePaths, (f) => fs.stat(f).catch(() => null), {
+    concurrency: IO_CONCURRENCY,
+  });
+  const files: CacheFile[] = [];
+  for (let i = 0; i < filePaths.length; i++) {
+    const stat = stats[i];
+    if (stat) {
+      files.push({
+        path: filePaths[i],
+        mtimeMs: stat.mtimeMs,
+        sizeBytes: stat.blocks * 512,
+      });
+    }
+  }
+  return files;
+}
+
+function toGb(bytes: number): string {
+  return (bytes / (1 << 30)).toFixed(2);
 }
