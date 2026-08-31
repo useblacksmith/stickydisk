@@ -18,8 +18,9 @@ export const GO_BUILD_CACHE_MAX_AGE_DAYS = 7;
 /**
  * In-flight async fs ops. Async fs calls execute on the libuv threadpool
  * (sized 16 in uv-threadpool.ts), so this only needs to be comfortably above
- * that to keep every thread fed; 64 is the value the cache-trim benchmarks
- * on real runner sticky disks were measured with.
+ * that to keep every thread fed; 64 is the value the benchmarks were measured
+ * with (methodology and results:
+ * https://github.com/useblacksmith/stickydisk/pull/75#issuecomment-5478135682).
  */
 const IO_CONCURRENCY = 64;
 
