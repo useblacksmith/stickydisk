@@ -403,7 +403,7 @@ var require_tunnel = __commonJS({
         connectOptions.headers = connectOptions.headers || {};
         connectOptions.headers["Proxy-Authorization"] = "Basic " + new Buffer(connectOptions.proxyAuth).toString("base64");
       }
-      debug3("making CONNECT request");
+      debug2("making CONNECT request");
       var connectReq = self.request(connectOptions);
       connectReq.useChunkedEncodingByDefault = false;
       connectReq.once("response", onResponse);
@@ -423,7 +423,7 @@ var require_tunnel = __commonJS({
         connectReq.removeAllListeners();
         socket.removeAllListeners();
         if (res.statusCode !== 200) {
-          debug3(
+          debug2(
             "tunneling socket could not be established, statusCode=%d",
             res.statusCode
           );
@@ -435,7 +435,7 @@ var require_tunnel = __commonJS({
           return;
         }
         if (head.length > 0) {
-          debug3("got illegal response body from proxy");
+          debug2("got illegal response body from proxy");
           socket.destroy();
           var error2 = new Error("got illegal response body from proxy");
           error2.code = "ECONNRESET";
@@ -443,13 +443,13 @@ var require_tunnel = __commonJS({
           self.removeSocket(placeholder);
           return;
         }
-        debug3("tunneling connection has established");
+        debug2("tunneling connection has established");
         self.sockets[self.sockets.indexOf(placeholder)] = socket;
         return cb(socket);
       }
       function onError(cause) {
         connectReq.removeAllListeners();
-        debug3(
+        debug2(
           "tunneling socket could not be established, cause=%s\n",
           cause.message,
           cause.stack
@@ -511,9 +511,9 @@ var require_tunnel = __commonJS({
       }
       return target;
     }
-    var debug3;
+    var debug2;
     if (process.env.NODE_DEBUG && /\btunnel\b/.test(process.env.NODE_DEBUG)) {
-      debug3 = function() {
+      debug2 = function() {
         var args = Array.prototype.slice.call(arguments);
         if (typeof args[0] === "string") {
           args[0] = "TUNNEL: " + args[0];
@@ -523,10 +523,10 @@ var require_tunnel = __commonJS({
         console.error.apply(console, args);
       };
     } else {
-      debug3 = function() {
+      debug2 = function() {
       };
     }
-    exports.debug = debug3;
+    exports.debug = debug2;
   }
 });
 
@@ -19732,10 +19732,10 @@ Support boolean input list: \`true | True | TRUE | false | False | FALSE\``);
       return process.env["RUNNER_DEBUG"] === "1";
     }
     exports.isDebug = isDebug;
-    function debug3(message) {
+    function debug2(message) {
       (0, command_1.issueCommand)("debug", {}, message);
     }
-    exports.debug = debug3;
+    exports.debug = debug2;
     function error2(message, properties = {}) {
       (0, command_1.issueCommand)("error", (0, utils_1.toCommandProperties)(properties), message instanceof Error ? message.toString() : message);
     }
@@ -25886,7 +25886,7 @@ var GoCacheManager = class {
     try {
       files = await scanCache(dir);
     } catch (error2) {
-      core2.debug(
+      core2.warning(
         `Could not scan GOCACHE at ${dir}: ${error2 instanceof Error ? error2.message : String(error2)}`
       );
       return false;
@@ -25899,17 +25899,11 @@ var GoCacheManager = class {
     }
     let trimmed = false;
     if (stale.length > 0) {
-      try {
-        await pMap(stale, (f) => fs.rm(f.path, { force: true }), {
-          concurrency: IO_CONCURRENCY
-        });
+      const removed2 = await removeFiles(stale, dir);
+      if (removed2 > 0) {
         trimmed = true;
         core2.info(
-          `Evicted ${stale.length} build cache entries unused for more than ${this.buildCacheMaxAgeMs / (86400 * 1e3)} days`
-        );
-      } catch (error2) {
-        core2.warning(
-          `Failed to evict stale entries from GOCACHE at ${dir}: ${error2 instanceof Error ? error2.message : String(error2)}`
+          `Evicted ${removed2} build cache entries unused for more than ${this.buildCacheMaxAgeMs / (86400 * 1e3)} days`
         );
       }
     }
@@ -25920,34 +25914,25 @@ var GoCacheManager = class {
     }
     if (sizeBytes <= limitBytes) {
       core2.info(
-        `GOCACHE at ${dir} is ${toGb(sizeBytes)} GiB, within the ${toGb(limitBytes)} GiB limit`
+        `GOCACHE is ${toGb(sizeBytes)} GiB, within the ${toGb(limitBytes)} GiB limit`
       );
       return trimmed;
     }
     core2.info(
       `GOCACHE is ${toGb(sizeBytes)} GiB, over the ${toGb(limitBytes)} GiB limit; removing old entries`
     );
-    try {
-      fresh.sort((a, b) => a.mtimeMs - b.mtimeMs);
-      const toDelete = [];
-      for (const file of fresh) {
-        if (sizeBytes <= limitBytes) {
-          break;
-        }
-        toDelete.push(file);
-        sizeBytes -= file.sizeBytes;
+    fresh.sort((a, b) => a.mtimeMs - b.mtimeMs);
+    const toDelete = [];
+    for (const file of fresh) {
+      if (sizeBytes <= limitBytes) {
+        break;
       }
-      await pMap(toDelete, (f) => fs.rm(f.path, { force: true }), {
-        concurrency: IO_CONCURRENCY
-      });
-      core2.info(`Removed ${toDelete.length} old build cache entries`);
-      return true;
-    } catch (error2) {
-      core2.warning(
-        `Failed to trim GOCACHE at ${dir}: ${error2 instanceof Error ? error2.message : String(error2)}`
-      );
-      return trimmed;
+      toDelete.push(file);
+      sizeBytes -= file.sizeBytes;
     }
+    const removed = await removeFiles(toDelete, dir);
+    core2.info(`Removed ${removed} old build cache entries`);
+    return trimmed || removed > 0;
   }
   /**
    * Wipes GOMODCACHE if it exceeds its limit. It is wiped rather than
@@ -25961,7 +25946,7 @@ var GoCacheManager = class {
       const files = await scanCache(dir);
       sizeBytes = files.reduce((sum, f) => sum + f.sizeBytes, 0);
     } catch (error2) {
-      core2.debug(
+      core2.warning(
         `Could not scan GOMODCACHE at ${dir}: ${error2 instanceof Error ? error2.message : String(error2)}`
       );
       return false;
@@ -25969,7 +25954,7 @@ var GoCacheManager = class {
     const limitBytes = this.modCacheLimitBytes;
     if (sizeBytes <= limitBytes) {
       core2.info(
-        `GOMODCACHE at ${dir} is ${toGb(sizeBytes)} GiB, within the ${toGb(limitBytes)} GiB limit`
+        `GOMODCACHE is ${toGb(sizeBytes)} GiB, within the ${toGb(limitBytes)} GiB limit`
       );
       return false;
     }
@@ -25988,6 +25973,30 @@ var GoCacheManager = class {
     }
   }
 };
+async function removeFiles(files, dir) {
+  let removed = 0;
+  let failed = 0;
+  let firstError = null;
+  await pMap(
+    files,
+    async (file) => {
+      try {
+        await fs.rm(file.path, { force: true });
+        removed++;
+      } catch (error2) {
+        failed++;
+        firstError ??= error2;
+      }
+    },
+    { concurrency: IO_CONCURRENCY }
+  );
+  if (failed > 0) {
+    core2.warning(
+      `Failed to remove ${failed} of ${files.length} entries from GOCACHE at ${dir}: ${firstError instanceof Error ? firstError.message : String(firstError)}`
+    );
+  }
+  return removed;
+}
 async function scanCache(dir) {
   const limit = pLimit(IO_CONCURRENCY);
   const filePaths = [];

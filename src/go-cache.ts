@@ -92,7 +92,7 @@ export class GoCacheManager {
     try {
       files = await scanCache(dir);
     } catch (error) {
-      core.debug(
+      core.warning(
         `Could not scan GOCACHE at ${dir}: ${error instanceof Error ? error.message : String(error)}`,
       );
       return false;
@@ -107,17 +107,11 @@ export class GoCacheManager {
 
     let trimmed = false;
     if (stale.length > 0) {
-      try {
-        await pMap(stale, (f) => fs.rm(f.path, { force: true }), {
-          concurrency: IO_CONCURRENCY,
-        });
+      const removed = await removeFiles(stale, dir);
+      if (removed > 0) {
         trimmed = true;
         core.info(
-          `Evicted ${stale.length} build cache entries unused for more than ${this.buildCacheMaxAgeMs / (86400 * 1000)} days`,
-        );
-      } catch (error) {
-        core.warning(
-          `Failed to evict stale entries from GOCACHE at ${dir}: ${error instanceof Error ? error.message : String(error)}`,
+          `Evicted ${removed} build cache entries unused for more than ${this.buildCacheMaxAgeMs / (86400 * 1000)} days`,
         );
       }
     }
@@ -129,7 +123,7 @@ export class GoCacheManager {
     }
     if (sizeBytes <= limitBytes) {
       core.info(
-        `GOCACHE at ${dir} is ${toGb(sizeBytes)} GiB, within the ${toGb(limitBytes)} GiB limit`,
+        `GOCACHE is ${toGb(sizeBytes)} GiB, within the ${toGb(limitBytes)} GiB limit`,
       );
       return trimmed;
     }
@@ -137,27 +131,18 @@ export class GoCacheManager {
     core.info(
       `GOCACHE is ${toGb(sizeBytes)} GiB, over the ${toGb(limitBytes)} GiB limit; removing old entries`,
     );
-    try {
-      fresh.sort((a, b) => a.mtimeMs - b.mtimeMs);
-      const toDelete: CacheFile[] = [];
-      for (const file of fresh) {
-        if (sizeBytes <= limitBytes) {
-          break;
-        }
-        toDelete.push(file);
-        sizeBytes -= file.sizeBytes;
+    fresh.sort((a, b) => a.mtimeMs - b.mtimeMs);
+    const toDelete: CacheFile[] = [];
+    for (const file of fresh) {
+      if (sizeBytes <= limitBytes) {
+        break;
       }
-      await pMap(toDelete, (f) => fs.rm(f.path, { force: true }), {
-        concurrency: IO_CONCURRENCY,
-      });
-      core.info(`Removed ${toDelete.length} old build cache entries`);
-      return true;
-    } catch (error) {
-      core.warning(
-        `Failed to trim GOCACHE at ${dir}: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      return trimmed;
+      toDelete.push(file);
+      sizeBytes -= file.sizeBytes;
     }
+    const removed = await removeFiles(toDelete, dir);
+    core.info(`Removed ${removed} old build cache entries`);
+    return trimmed || removed > 0;
   }
 
   /**
@@ -172,7 +157,7 @@ export class GoCacheManager {
       const files = await scanCache(dir);
       sizeBytes = files.reduce((sum, f) => sum + f.sizeBytes, 0);
     } catch (error) {
-      core.debug(
+      core.warning(
         `Could not scan GOMODCACHE at ${dir}: ${error instanceof Error ? error.message : String(error)}`,
       );
       return false;
@@ -181,7 +166,7 @@ export class GoCacheManager {
     const limitBytes = this.modCacheLimitBytes;
     if (sizeBytes <= limitBytes) {
       core.info(
-        `GOMODCACHE at ${dir} is ${toGb(sizeBytes)} GiB, within the ${toGb(limitBytes)} GiB limit`,
+        `GOMODCACHE is ${toGb(sizeBytes)} GiB, within the ${toGb(limitBytes)} GiB limit`,
       );
       return false;
     }
@@ -200,6 +185,36 @@ export class GoCacheManager {
       return false;
     }
   }
+}
+
+/**
+ * Removes files individually rather than failing fast: unmount uses trim()'s
+ * return value to force an on-change commit, so it must reflect deletions
+ * that succeeded even when a later one fails. Returns the number removed.
+ */
+async function removeFiles(files: CacheFile[], dir: string): Promise<number> {
+  let removed = 0;
+  let failed = 0;
+  let firstError: unknown = null;
+  await pMap(
+    files,
+    async (file) => {
+      try {
+        await fs.rm(file.path, { force: true });
+        removed++;
+      } catch (error) {
+        failed++;
+        firstError ??= error;
+      }
+    },
+    { concurrency: IO_CONCURRENCY },
+  );
+  if (failed > 0) {
+    core.warning(
+      `Failed to remove ${failed} of ${files.length} entries from GOCACHE at ${dir}: ${firstError instanceof Error ? firstError.message : String(firstError)}`,
+    );
+  }
+  return removed;
 }
 
 /**

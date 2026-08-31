@@ -40,12 +40,15 @@ describe("GoCacheManager", () => {
       expect(process.env.GOCACHE).toBe(caches.buildCachePath);
       expect(process.env.GOMODCACHE).toBe(caches.modCachePath);
 
-      const envContents = await fs.readFile(envFile, "utf8");
-      expect(envContents).toContain(caches.buildCachePath);
-      expect(envContents).toContain(caches.modCachePath);
+      const exported = parseGithubEnv(await fs.readFile(envFile, "utf8"));
+      expect(exported.GOCACHE).toBe(caches.buildCachePath);
+      expect(exported.GOMODCACHE).toBe(caches.modCachePath);
 
-      // Idempotent when the dirs already exist.
+      // Idempotent: a second setup preserves existing cache contents.
+      const marker = await h.writeBuildFile("00/marker");
       await caches.setup();
+      expect(await h.exists(marker)).toBe(true);
+      expect(process.env.GOCACHE).toBe(caches.buildCachePath);
     });
   });
 
@@ -95,6 +98,45 @@ describe("GoCacheManager", () => {
         expect(await h.exists(sparse)).toBe(true);
       });
 
+      it("reports trimmed when only some stale entries can be deleted", async ({
+        h,
+      }) => {
+        const locked = await h.writeBuildFile("00/locked/entry", {
+          ageMs: 8 * DAY,
+        });
+        const evictable = await h.writeBuildFile("01/evictable", {
+          ageMs: 8 * DAY,
+        });
+        const fresh = await h.writeBuildFile("02/fresh", { ageMs: 1 * HOUR });
+        // A read-only parent makes rm fail for this entry only.
+        await fs.chmod(path.dirname(locked), 0o555);
+
+        expect(await h.manager().trim()).toBe(true);
+        expect(await h.exists(locked)).toBe(true);
+        expect(await h.exists(evictable)).toBe(false);
+        expect(await h.exists(fresh)).toBe(true);
+      });
+
+      it("reports trimmed when only some LRU evictions succeed", async ({
+        h,
+      }) => {
+        const oldest = await h.writeBuildFile("00/locked/oldest", {
+          ageMs: 4 * HOUR,
+        });
+        const older = await h.writeBuildFile("01/older", { ageMs: 3 * HOUR });
+        const newest = await h.writeBuildFile("02/newest", { ageMs: 1 * HOUR });
+        await fs.chmod(path.dirname(oldest), 0o555);
+        const fileSize = await h.diskUsage(older);
+
+        // Fitting into one file's worth means evicting oldest and older;
+        // only older can actually be deleted.
+        const caches = h.manager({ buildCacheLimitBytes: fileSize });
+        expect(await caches.trim()).toBe(true);
+        expect(await h.exists(oldest)).toBe(true);
+        expect(await h.exists(older)).toBe(false);
+        expect(await h.exists(newest)).toBe(true);
+      });
+
       it("handles thousands of nested files", async ({ h }) => {
         const keep: string[] = [];
         const evict: string[] = [];
@@ -132,15 +174,45 @@ describe("GoCacheManager", () => {
         expect(await fs.readdir(caches.modCachePath)).toEqual([]);
       });
 
-      it("leaves contents intact when the wipe fails", async ({ h }) => {
-        const mod = await h.writeModFile("example.com/mod@v1/go.mod");
+      it("reports nothing trimmed when the wipe fails", async ({ h }) => {
+        const writable = await h.writeModFile("example.com/other@v1/go.mod");
+        const readOnly = await h.writeModFile("example.com/mod@v1/go.mod");
         // Mimic the real mod cache: read-only files in read-only dirs, which
         // non-sudo rm cannot delete.
-        await fs.chmod(mod, 0o444);
-        await fs.chmod(path.dirname(mod), 0o555);
+        await fs.chmod(readOnly, 0o444);
+        await fs.chmod(path.dirname(readOnly), 0o555);
 
         expect(await h.manager({ modCacheLimitBytes: 0 }).trim()).toBe(false);
-        expect(await h.exists(mod)).toBe(true);
+        // rm -rf deletes everything it can before reporting failure; only
+        // the undeletable module survives.
+        expect(await h.exists(readOnly)).toBe(true);
+        expect(await h.exists(writable)).toBe(false);
+      });
+
+      it("wipes with sudo and shell-quotes the path", async ({ h }) => {
+        // A fake sudo on PATH records its invocation, then runs the command.
+        const binDir = path.join(h.tmp, "bin");
+        const sudoLog = path.join(h.tmp, "sudo.log");
+        await fs.mkdir(binDir);
+        await fs.writeFile(
+          path.join(binDir, "sudo"),
+          `#!/bin/sh\necho "$@" >> ${shellQuote(sudoLog)}\nexec "$@"\n`,
+          { mode: 0o755 },
+        );
+        vi.stubEnv("PATH", `${binDir}:${process.env.PATH}`);
+
+        // Without quoting, the space and apostrophe would break the command.
+        const disk = path.join(h.tmp, "sticky disk's");
+        const caches = new GoCacheManager(disk, { modCacheLimitBytes: 0 });
+        const mod = path.join(caches.modCachePath, "example.com/mod@v1/go.mod");
+        await fs.mkdir(path.dirname(mod), { recursive: true });
+        await fs.writeFile(mod, "data");
+
+        expect(await caches.trim()).toBe(true);
+        expect(await h.exists(mod)).toBe(false);
+        expect(await fs.readFile(sudoLog, "utf8")).toBe(
+          `rm -rf ${caches.modCachePath}\n`,
+        );
       });
     });
 
@@ -158,6 +230,15 @@ describe("GoCacheManager", () => {
     });
   });
 });
+
+/** Parses GITHUB_ENV heredoc entries (NAME<<DELIM\nvalue\nDELIM). */
+function parseGithubEnv(contents: string): Record<string, string> {
+  const entries: Record<string, string> = {};
+  for (const m of contents.matchAll(/^(\w+)<<(\S+)\n(.*)\n\2$/gm)) {
+    entries[m[1]] = m[3];
+  }
+  return entries;
+}
 
 interface TestFileOptions {
   ageMs?: number;
