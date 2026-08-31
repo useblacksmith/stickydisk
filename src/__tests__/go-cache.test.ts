@@ -58,7 +58,7 @@ describe("GoCacheManager", () => {
         const a = await h.writeBuildFile("00/a");
         const b = await h.writeBuildFile("01/b");
 
-        expect(await h.manager().trim()).toBe(false);
+        await h.manager().trim();
         expect(await h.exists(a)).toBe(true);
         expect(await h.exists(b)).toBe(true);
       });
@@ -67,12 +67,12 @@ describe("GoCacheManager", () => {
         const stale = await h.writeBuildFile("00/stale", { ageMs: 8 * DAY });
         const fresh = await h.writeBuildFile("01/fresh", { ageMs: 1 * DAY });
 
-        expect(await h.manager().trim()).toBe(true);
+        await h.manager().trim();
         expect(await h.exists(stale)).toBe(false);
         expect(await h.exists(fresh)).toBe(true);
       });
 
-      it("LRU-evicts oldest entries until it fits", async ({ h }) => {
+      it("LRU-evicts down to half the limit when over it", async ({ h }) => {
         // All well within the max age, so only the size limit applies.
         const oldest = await h.writeBuildFile("00/oldest", { ageMs: 4 * HOUR });
         const older = await h.writeBuildFile("01/older", { ageMs: 3 * HOUR });
@@ -80,11 +80,13 @@ describe("GoCacheManager", () => {
         const newest = await h.writeBuildFile("03/newest", { ageMs: 1 * HOUR });
         const fileSize = await h.diskUsage(oldest);
 
+        // Four files against a 3-file limit: over, so evict down to the
+        // 1.5-file target, which leaves only the newest.
         const caches = h.manager({ buildCacheLimitBytes: 3 * fileSize });
-        expect(await caches.trim()).toBe(true);
+        await caches.trim();
         expect(await h.exists(oldest)).toBe(false);
-        expect(await h.exists(older)).toBe(true);
-        expect(await h.exists(newer)).toBe(true);
+        expect(await h.exists(older)).toBe(false);
+        expect(await h.exists(newer)).toBe(false);
         expect(await h.exists(newest)).toBe(true);
       });
 
@@ -94,11 +96,11 @@ describe("GoCacheManager", () => {
         await fs.truncate(sparse, 10 * (1 << 20));
 
         const caches = h.manager({ buildCacheLimitBytes: 1 << 20 });
-        expect(await caches.trim()).toBe(false);
+        await caches.trim();
         expect(await h.exists(sparse)).toBe(true);
       });
 
-      it("reports trimmed when only some stale entries can be deleted", async ({
+      it("evicts the stale entries it can when some are undeletable", async ({
         h,
       }) => {
         const locked = await h.writeBuildFile("00/locked/entry", {
@@ -111,15 +113,13 @@ describe("GoCacheManager", () => {
         // A read-only parent makes rm fail for this entry only.
         await fs.chmod(path.dirname(locked), 0o555);
 
-        expect(await h.manager().trim()).toBe(true);
+        await h.manager().trim();
         expect(await h.exists(locked)).toBe(true);
         expect(await h.exists(evictable)).toBe(false);
         expect(await h.exists(fresh)).toBe(true);
       });
 
-      it("reports trimmed when only some LRU evictions succeed", async ({
-        h,
-      }) => {
+      it("continues LRU eviction when some deletions fail", async ({ h }) => {
         const oldest = await h.writeBuildFile("00/locked/oldest", {
           ageMs: 4 * HOUR,
         });
@@ -128,10 +128,10 @@ describe("GoCacheManager", () => {
         await fs.chmod(path.dirname(oldest), 0o555);
         const fileSize = await h.diskUsage(older);
 
-        // Fitting into one file's worth means evicting oldest and older;
-        // only older can actually be deleted.
-        const caches = h.manager({ buildCacheLimitBytes: fileSize });
-        expect(await caches.trim()).toBe(true);
+        // Three files against a 2-file limit: reaching the 1-file target
+        // means evicting oldest and older; only older can be deleted.
+        const caches = h.manager({ buildCacheLimitBytes: 2 * fileSize });
+        await caches.trim();
         expect(await h.exists(oldest)).toBe(true);
         expect(await h.exists(older)).toBe(false);
         expect(await h.exists(newest)).toBe(true);
@@ -149,7 +149,7 @@ describe("GoCacheManager", () => {
           }
         }
 
-        expect(await h.manager().trim()).toBe(true);
+        await h.manager().trim();
         const survivors = await Promise.all(keep.map((p) => h.exists(p)));
         const evicted = await Promise.all(evict.map((p) => h.exists(p)));
         expect(survivors.every(Boolean)).toBe(true);
@@ -161,7 +161,7 @@ describe("GoCacheManager", () => {
       it("leaves it alone when under the limit", async ({ h }) => {
         const mod = await h.writeModFile("example.com/mod@v1/go.mod");
 
-        expect(await h.manager().trim()).toBe(false);
+        await h.manager().trim();
         expect(await h.exists(mod)).toBe(true);
       });
 
@@ -169,12 +169,12 @@ describe("GoCacheManager", () => {
         const mod = await h.writeModFile("example.com/mod@v1/go.mod");
 
         const caches = h.manager({ modCacheLimitBytes: 0 });
-        expect(await caches.trim()).toBe(true);
+        await caches.trim();
         expect(await h.exists(mod)).toBe(false);
         expect(await fs.readdir(caches.modCachePath)).toEqual([]);
       });
 
-      it("reports nothing trimmed when the wipe fails", async ({ h }) => {
+      it("survives a failed wipe", async ({ h }) => {
         const writable = await h.writeModFile("example.com/other@v1/go.mod");
         const readOnly = await h.writeModFile("example.com/mod@v1/go.mod");
         // Mimic the real mod cache: read-only files in read-only dirs, which
@@ -182,7 +182,7 @@ describe("GoCacheManager", () => {
         await fs.chmod(readOnly, 0o444);
         await fs.chmod(path.dirname(readOnly), 0o555);
 
-        expect(await h.manager({ modCacheLimitBytes: 0 }).trim()).toBe(false);
+        await h.manager({ modCacheLimitBytes: 0 }).trim();
         // rm -rf deletes everything it can before reporting failure; only
         // the undeletable module survives.
         expect(await h.exists(readOnly)).toBe(true);
@@ -208,7 +208,7 @@ describe("GoCacheManager", () => {
         await fs.mkdir(path.dirname(mod), { recursive: true });
         await fs.writeFile(mod, "data");
 
-        expect(await caches.trim()).toBe(true);
+        await caches.trim();
         expect(await h.exists(mod)).toBe(false);
         expect(await fs.readFile(sudoLog, "utf8")).toBe(
           `rm -rf ${caches.modCachePath}\n`,
@@ -217,15 +217,15 @@ describe("GoCacheManager", () => {
     });
 
     describe("missing or empty disk", () => {
-      it("returns false when the dirs do not exist", async ({ h }) => {
-        expect(await h.manager().trim()).toBe(false);
+      it("is a no-op when the dirs do not exist", async ({ h }) => {
+        await expect(h.manager().trim()).resolves.toBeUndefined();
       });
 
-      it("returns false when both caches are empty", async ({ h }) => {
+      it("is a no-op when both caches are empty", async ({ h }) => {
         const caches = h.manager();
         await fs.mkdir(caches.buildCachePath, { recursive: true });
         await fs.mkdir(caches.modCachePath, { recursive: true });
-        expect(await caches.trim()).toBe(false);
+        await expect(caches.trim()).resolves.toBeUndefined();
       });
     });
   });

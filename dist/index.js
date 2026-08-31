@@ -25866,19 +25866,14 @@ var GoCacheManager = class {
       `Go caching enabled: GOCACHE=${this.buildCachePath} GOMODCACHE=${this.modCachePath}`
     );
   }
-  /** Trims over-limit Go caches. Returns true if anything was removed. */
+  /** Trims over-limit Go caches. */
   async trim() {
-    const [buildTrimmed, modTrimmed] = await Promise.all([
-      this.trimBuildCache(),
-      this.trimModCache()
-    ]);
-    return buildTrimmed || modTrimmed;
+    await Promise.all([this.trimBuildCache(), this.trimModCache()]);
   }
   /**
-   * Evicts GOCACHE entry files unused for more than the max age, then
-   * LRU-evicts until the cache fits in the limit (go bumps an entry's mtime
-   * on use; a missing entry is just a cache miss). Returns true if anything
-   * was deleted.
+   * Evicts GOCACHE entry files unused for more than the max age, then, if the
+   * cache is over the limit, LRU-evicts down to half the limit (go bumps an
+   * entry's mtime on use; a missing entry is just a cache miss).
    */
   async trimBuildCache() {
     const dir = this.buildCachePath;
@@ -25889,7 +25884,7 @@ var GoCacheManager = class {
       core2.warning(
         `Could not scan GOCACHE at ${dir}: ${error2 instanceof Error ? error2.message : String(error2)}`
       );
-      return false;
+      return;
     }
     const cutoffMs = Date.now() - this.buildCacheMaxAgeMs;
     const stale = [];
@@ -25897,11 +25892,9 @@ var GoCacheManager = class {
     for (const file of files) {
       (file.mtimeMs < cutoffMs ? stale : fresh).push(file);
     }
-    let trimmed = false;
     if (stale.length > 0) {
       const removed2 = await removeFiles(stale, dir);
       if (removed2 > 0) {
-        trimmed = true;
         core2.info(
           `Evicted ${removed2} build cache entries unused for more than ${this.buildCacheMaxAgeMs / (86400 * 1e3)} days`
         );
@@ -25916,15 +25909,16 @@ var GoCacheManager = class {
       core2.info(
         `GOCACHE is ${toGb(sizeBytes)} GiB, within the ${toGb(limitBytes)} GiB limit`
       );
-      return trimmed;
+      return;
     }
+    const targetBytes = limitBytes / 2;
     core2.info(
-      `GOCACHE is ${toGb(sizeBytes)} GiB, over the ${toGb(limitBytes)} GiB limit; removing old entries`
+      `GOCACHE is ${toGb(sizeBytes)} GiB, over the ${toGb(limitBytes)} GiB limit; trimming to ${toGb(targetBytes)} GiB`
     );
     fresh.sort((a, b) => a.mtimeMs - b.mtimeMs);
     const toDelete = [];
     for (const file of fresh) {
-      if (sizeBytes <= limitBytes) {
+      if (sizeBytes <= targetBytes) {
         break;
       }
       toDelete.push(file);
@@ -25932,12 +25926,10 @@ var GoCacheManager = class {
     }
     const removed = await removeFiles(toDelete, dir);
     core2.info(`Removed ${removed} old build cache entries`);
-    return trimmed || removed > 0;
   }
   /**
    * Wipes GOMODCACHE if it exceeds its limit. It is wiped rather than
-   * LRU-trimmed because partial deletion corrupts extracted modules. Returns
-   * true if it was wiped.
+   * LRU-trimmed because partial deletion corrupts extracted modules.
    */
   async trimModCache() {
     const dir = this.modCachePath;
@@ -25949,14 +25941,14 @@ var GoCacheManager = class {
       core2.warning(
         `Could not scan GOMODCACHE at ${dir}: ${error2 instanceof Error ? error2.message : String(error2)}`
       );
-      return false;
+      return;
     }
     const limitBytes = this.modCacheLimitBytes;
     if (sizeBytes <= limitBytes) {
       core2.info(
         `GOMODCACHE is ${toGb(sizeBytes)} GiB, within the ${toGb(limitBytes)} GiB limit`
       );
-      return false;
+      return;
     }
     core2.info(
       `GOMODCACHE is ${toGb(sizeBytes)} GiB, over the ${toGb(limitBytes)} GiB limit; wiping cache`
@@ -25964,12 +25956,10 @@ var GoCacheManager = class {
     try {
       await execAsync(`${this.sudo ? "sudo " : ""}rm -rf ${shellQuote(dir)}`);
       await fs.mkdir(dir, { recursive: true });
-      return true;
     } catch (error2) {
       core2.warning(
         `Failed to wipe GOMODCACHE at ${dir}: ${error2 instanceof Error ? error2.message : String(error2)}`
       );
-      return false;
     }
   }
 };

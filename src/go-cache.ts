@@ -71,22 +71,17 @@ export class GoCacheManager {
     );
   }
 
-  /** Trims over-limit Go caches. Returns true if anything was removed. */
-  async trim(): Promise<boolean> {
-    const [buildTrimmed, modTrimmed] = await Promise.all([
-      this.trimBuildCache(),
-      this.trimModCache(),
-    ]);
-    return buildTrimmed || modTrimmed;
+  /** Trims over-limit Go caches. */
+  async trim(): Promise<void> {
+    await Promise.all([this.trimBuildCache(), this.trimModCache()]);
   }
 
   /**
-   * Evicts GOCACHE entry files unused for more than the max age, then
-   * LRU-evicts until the cache fits in the limit (go bumps an entry's mtime
-   * on use; a missing entry is just a cache miss). Returns true if anything
-   * was deleted.
+   * Evicts GOCACHE entry files unused for more than the max age, then, if the
+   * cache is over the limit, LRU-evicts down to half the limit (go bumps an
+   * entry's mtime on use; a missing entry is just a cache miss).
    */
-  private async trimBuildCache(): Promise<boolean> {
+  private async trimBuildCache(): Promise<void> {
     const dir = this.buildCachePath;
     let files: CacheFile[];
     try {
@@ -95,7 +90,7 @@ export class GoCacheManager {
       core.warning(
         `Could not scan GOCACHE at ${dir}: ${error instanceof Error ? error.message : String(error)}`,
       );
-      return false;
+      return;
     }
 
     const cutoffMs = Date.now() - this.buildCacheMaxAgeMs;
@@ -105,11 +100,9 @@ export class GoCacheManager {
       (file.mtimeMs < cutoffMs ? stale : fresh).push(file);
     }
 
-    let trimmed = false;
     if (stale.length > 0) {
       const removed = await removeFiles(stale, dir);
       if (removed > 0) {
-        trimmed = true;
         core.info(
           `Evicted ${removed} build cache entries unused for more than ${this.buildCacheMaxAgeMs / (86400 * 1000)} days`,
         );
@@ -125,16 +118,19 @@ export class GoCacheManager {
       core.info(
         `GOCACHE is ${toGb(sizeBytes)} GiB, within the ${toGb(limitBytes)} GiB limit`,
       );
-      return trimmed;
+      return;
     }
 
+    // Trim to half the limit rather than just under it, so busy repos don't
+    // hover at the threshold and re-trim (and re-commit) on every job.
+    const targetBytes = limitBytes / 2;
     core.info(
-      `GOCACHE is ${toGb(sizeBytes)} GiB, over the ${toGb(limitBytes)} GiB limit; removing old entries`,
+      `GOCACHE is ${toGb(sizeBytes)} GiB, over the ${toGb(limitBytes)} GiB limit; trimming to ${toGb(targetBytes)} GiB`,
     );
     fresh.sort((a, b) => a.mtimeMs - b.mtimeMs);
     const toDelete: CacheFile[] = [];
     for (const file of fresh) {
-      if (sizeBytes <= limitBytes) {
+      if (sizeBytes <= targetBytes) {
         break;
       }
       toDelete.push(file);
@@ -142,15 +138,13 @@ export class GoCacheManager {
     }
     const removed = await removeFiles(toDelete, dir);
     core.info(`Removed ${removed} old build cache entries`);
-    return trimmed || removed > 0;
   }
 
   /**
    * Wipes GOMODCACHE if it exceeds its limit. It is wiped rather than
-   * LRU-trimmed because partial deletion corrupts extracted modules. Returns
-   * true if it was wiped.
+   * LRU-trimmed because partial deletion corrupts extracted modules.
    */
-  private async trimModCache(): Promise<boolean> {
+  private async trimModCache(): Promise<void> {
     const dir = this.modCachePath;
     let sizeBytes: number;
     try {
@@ -160,7 +154,7 @@ export class GoCacheManager {
       core.warning(
         `Could not scan GOMODCACHE at ${dir}: ${error instanceof Error ? error.message : String(error)}`,
       );
-      return false;
+      return;
     }
 
     const limitBytes = this.modCacheLimitBytes;
@@ -168,7 +162,7 @@ export class GoCacheManager {
       core.info(
         `GOMODCACHE is ${toGb(sizeBytes)} GiB, within the ${toGb(limitBytes)} GiB limit`,
       );
-      return false;
+      return;
     }
 
     core.info(
@@ -177,20 +171,17 @@ export class GoCacheManager {
     try {
       await execAsync(`${this.sudo ? "sudo " : ""}rm -rf ${shellQuote(dir)}`);
       await fs.mkdir(dir, { recursive: true });
-      return true;
     } catch (error) {
       core.warning(
         `Failed to wipe GOMODCACHE at ${dir}: ${error instanceof Error ? error.message : String(error)}`,
       );
-      return false;
     }
   }
 }
 
 /**
- * Removes files individually rather than failing fast: unmount uses trim()'s
- * return value to force an on-change commit, so it must reflect deletions
- * that succeeded even when a later one fails. Returns the number removed.
+ * Removes files individually rather than failing fast, so one undeletable
+ * entry does not abort the trim. Returns the number removed.
  */
 async function removeFiles(files: CacheFile[], dir: string): Promise<number> {
   let removed = 0;

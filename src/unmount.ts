@@ -287,10 +287,10 @@ export async function runUnmount(options: UnmountOptions): Promise<void> {
     }
 
     // Trim oversized Go caches while the disk is still mounted so the
-    // committed snapshot stays bounded.
-    let goCachesTrimmed = false;
+    // committed snapshot stays bounded. This runs before usage is measured,
+    // so in on-change mode a trim registers as a change and gets committed.
     if (goCaching) {
-      goCachesTrimmed = await new GoCacheManager(stickyDiskPath).trim();
+      await new GoCacheManager(stickyDiskPath).trim();
     }
 
     // Ensure all pending writes are flushed to disk before collecting usage.
@@ -369,9 +369,6 @@ export async function runUnmount(options: UnmountOptions): Promise<void> {
 
     if (
       commitIntent === CommitIntent.ON_CHANGE &&
-      // Trimming removes cache content, so the disk has changed even if the
-      // measured usage ends up close to its pre-job value.
-      !goCachesTrimmed &&
       !shouldCommitOnChange(fsDiskUsageBytes, initialUsageBytesStr)
     ) {
       await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey);
