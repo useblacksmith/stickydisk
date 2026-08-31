@@ -52,8 +52,8 @@ describe("GoCacheManager", () => {
   describe("trim()", () => {
     describe("build cache", () => {
       it("keeps everything when under the limit", async ({ h }) => {
-        const a = await h.writeFile("00/a");
-        const b = await h.writeFile("01/b");
+        const a = await h.writeBuildFile("00/a");
+        const b = await h.writeBuildFile("01/b");
 
         expect(await h.manager().trim()).toBe(false);
         expect(await h.exists(a)).toBe(true);
@@ -61,8 +61,8 @@ describe("GoCacheManager", () => {
       });
 
       it("evicts stale entries and keeps fresh ones", async ({ h }) => {
-        const stale = await h.writeFile("00/stale", { ageMs: 8 * DAY });
-        const fresh = await h.writeFile("01/fresh", { ageMs: 1 * DAY });
+        const stale = await h.writeBuildFile("00/stale", { ageMs: 8 * DAY });
+        const fresh = await h.writeBuildFile("01/fresh", { ageMs: 1 * DAY });
 
         expect(await h.manager().trim()).toBe(true);
         expect(await h.exists(stale)).toBe(false);
@@ -71,10 +71,10 @@ describe("GoCacheManager", () => {
 
       it("LRU-evicts oldest entries until it fits", async ({ h }) => {
         // All well within the max age, so only the size limit applies.
-        const oldest = await h.writeFile("00/oldest", { ageMs: 4 * HOUR });
-        const older = await h.writeFile("01/older", { ageMs: 3 * HOUR });
-        const newer = await h.writeFile("02/newer", { ageMs: 2 * HOUR });
-        const newest = await h.writeFile("03/newest", { ageMs: 1 * HOUR });
+        const oldest = await h.writeBuildFile("00/oldest", { ageMs: 4 * HOUR });
+        const older = await h.writeBuildFile("01/older", { ageMs: 3 * HOUR });
+        const newer = await h.writeBuildFile("02/newer", { ageMs: 2 * HOUR });
+        const newest = await h.writeBuildFile("03/newest", { ageMs: 1 * HOUR });
         const fileSize = await h.diskUsage(oldest);
 
         const caches = h.manager({ buildCacheLimitBytes: 3 * fileSize });
@@ -87,7 +87,7 @@ describe("GoCacheManager", () => {
 
       it("measures disk usage, not apparent size", async ({ h }) => {
         // 10 MiB apparent size, ~0 bytes allocated.
-        const sparse = await h.writeFile("00/sparse", { bytes: 0 });
+        const sparse = await h.writeBuildFile("00/sparse", { bytes: 0 });
         await fs.truncate(sparse, 10 * (1 << 20));
 
         const caches = h.manager({ buildCacheLimitBytes: 1 << 20 });
@@ -101,9 +101,9 @@ describe("GoCacheManager", () => {
         for (let i = 0; i < 2000; i++) {
           const rel = `${i % 16}/${Math.floor(i / 16) % 16}/f${i}`;
           if (i % 2 === 0) {
-            evict.push(await h.writeFile(rel, { ageMs: 8 * DAY }));
+            evict.push(await h.writeBuildFile(rel, { ageMs: 8 * DAY }));
           } else {
-            keep.push(await h.writeFile(rel, { ageMs: 1 * HOUR }));
+            keep.push(await h.writeBuildFile(rel, { ageMs: 1 * HOUR }));
           }
         }
 
@@ -189,7 +189,7 @@ class TestHarness {
   }
 
   /** Writes a file under GOCACHE and returns its absolute path. */
-  writeFile(rel: string, opts?: TestFileOptions): Promise<string> {
+  writeBuildFile(rel: string, opts?: TestFileOptions): Promise<string> {
     return this.write(path.join(this.manager().buildCachePath, rel), opts);
   }
 
