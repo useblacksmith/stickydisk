@@ -25652,12 +25652,6 @@ var GO_BUILD_CACHE_LIMIT_GB = 50;
 var GO_MOD_CACHE_LIMIT_GB = 15;
 var GO_BUILD_CACHE_MAX_AGE_DAYS = 7;
 var IO_CONCURRENCY = 64;
-function goBuildCachePath(stickyDiskPath) {
-  return path2.join(stickyDiskPath, GO_BUILD_CACHE_SUBDIR);
-}
-function goModCachePath(stickyDiskPath) {
-  return path2.join(stickyDiskPath, GO_MOD_CACHE_SUBDIR);
-}
 async function mapPool(items, fn) {
   const out = new Array(items.length);
   let next = 0;
@@ -25710,111 +25704,146 @@ async function scanCache(dir) {
 function toGb(bytes) {
   return (bytes / (1 << 30)).toFixed(2);
 }
-async function trimBuildCache(dir) {
-  let files;
-  try {
-    files = await scanCache(dir);
-  } catch (error2) {
-    core3.debug(
-      `Could not scan GOCACHE at ${dir}: ${error2 instanceof Error ? error2.message : String(error2)}`
+var GoCacheManager = class {
+  constructor(stickyDiskPath, opts = {}) {
+    this.buildCachePath = path2.join(stickyDiskPath, GO_BUILD_CACHE_SUBDIR);
+    this.modCachePath = path2.join(stickyDiskPath, GO_MOD_CACHE_SUBDIR);
+    this.buildCacheLimitBytes = opts.buildCacheLimitBytes ?? GO_BUILD_CACHE_LIMIT_GB * (1 << 30);
+    this.buildCacheMaxAgeMs = opts.buildCacheMaxAgeMs ?? GO_BUILD_CACHE_MAX_AGE_DAYS * 86400 * 1e3;
+    this.modCacheLimitBytes = opts.modCacheLimitBytes ?? GO_MOD_CACHE_LIMIT_GB * (1 << 30);
+    this.sudo = opts.sudo ?? true;
+  }
+  async setup() {
+    await Promise.all([
+      fs2.mkdir(this.buildCachePath, { recursive: true }),
+      fs2.mkdir(this.modCachePath, { recursive: true })
+    ]);
+    core3.exportVariable("GOCACHE", this.buildCachePath);
+    core3.exportVariable("GOMODCACHE", this.modCachePath);
+    core3.info(
+      `Go caching enabled: GOCACHE=${this.buildCachePath} GOMODCACHE=${this.modCachePath}`
     );
-    return false;
   }
-  const cutoffMs = Date.now() - GO_BUILD_CACHE_MAX_AGE_DAYS * 86400 * 1e3;
-  const stale = [];
-  const fresh = [];
-  for (const file of files) {
-    (file.mtimeMs < cutoffMs ? stale : fresh).push(file);
+  /** Trims over-limit Go caches. Returns true if anything was removed. */
+  async trim() {
+    const [buildTrimmed, modTrimmed] = await Promise.all([
+      this.trimBuildCache(),
+      this.trimModCache()
+    ]);
+    return buildTrimmed || modTrimmed;
   }
-  let trimmed = false;
-  if (stale.length > 0) {
+  /**
+   * Evicts GOCACHE entry files unused for more than the max age, then
+   * LRU-evicts until the cache fits in the limit (go bumps an entry's mtime
+   * on use; a missing entry is just a cache miss). Returns true if anything
+   * was deleted.
+   */
+  async trimBuildCache() {
+    const dir = this.buildCachePath;
+    let files;
     try {
-      await mapPool(stale, (f) => fs2.rm(f.path, { force: true }));
-      trimmed = true;
-      core3.info(
-        `Evicted ${stale.length} build cache entries unused for more than ${GO_BUILD_CACHE_MAX_AGE_DAYS} days`
+      files = await scanCache(dir);
+    } catch (error2) {
+      core3.debug(
+        `Could not scan GOCACHE at ${dir}: ${error2 instanceof Error ? error2.message : String(error2)}`
       );
+      return false;
+    }
+    const cutoffMs = Date.now() - this.buildCacheMaxAgeMs;
+    const stale = [];
+    const fresh = [];
+    for (const file of files) {
+      (file.mtimeMs < cutoffMs ? stale : fresh).push(file);
+    }
+    let trimmed = false;
+    if (stale.length > 0) {
+      try {
+        await mapPool(stale, (f) => fs2.rm(f.path, { force: true }));
+        trimmed = true;
+        core3.info(
+          `Evicted ${stale.length} build cache entries unused for more than ${GO_BUILD_CACHE_MAX_AGE_DAYS} days`
+        );
+      } catch (error2) {
+        core3.warning(
+          `Failed to evict stale entries from GOCACHE at ${dir}: ${error2 instanceof Error ? error2.message : String(error2)}`
+        );
+      }
+    }
+    const limitBytes = this.buildCacheLimitBytes;
+    let sizeBytes = 0;
+    for (const file of fresh) {
+      sizeBytes += file.sizeBytes;
+    }
+    if (sizeBytes <= limitBytes) {
+      core3.info(
+        `GOCACHE at ${dir} is ${toGb(sizeBytes)} GiB, within the ${toGb(limitBytes)} GiB limit`
+      );
+      return trimmed;
+    }
+    core3.info(
+      `GOCACHE at ${dir} is ${toGb(sizeBytes)} GiB, over the ${toGb(limitBytes)} GiB limit; evicting least-recently-used entries before commit`
+    );
+    try {
+      fresh.sort((a, b) => a.mtimeMs - b.mtimeMs);
+      const toDelete = [];
+      for (const file of fresh) {
+        if (sizeBytes <= limitBytes) {
+          break;
+        }
+        toDelete.push(file);
+        sizeBytes -= file.sizeBytes;
+      }
+      await mapPool(toDelete, (f) => fs2.rm(f.path, { force: true }));
+      core3.info(
+        `Evicted ${toDelete.length} least-recently-used build cache entries`
+      );
+      return true;
     } catch (error2) {
       core3.warning(
-        `Failed to evict stale entries from GOCACHE at ${dir}: ${error2 instanceof Error ? error2.message : String(error2)}`
+        `Failed to trim GOCACHE at ${dir}: ${error2 instanceof Error ? error2.message : String(error2)}`
       );
+      return trimmed;
     }
   }
-  const limitBytes = GO_BUILD_CACHE_LIMIT_GB * (1 << 30);
-  let sizeBytes = 0;
-  for (const file of fresh) {
-    sizeBytes += file.sizeBytes;
-  }
-  if (sizeBytes <= limitBytes) {
-    core3.info(
-      `GOCACHE at ${dir} is ${toGb(sizeBytes)} GiB, within the ${GO_BUILD_CACHE_LIMIT_GB} GiB limit`
-    );
-    return trimmed;
-  }
-  core3.info(
-    `GOCACHE at ${dir} is ${toGb(sizeBytes)} GiB, over the ${GO_BUILD_CACHE_LIMIT_GB} GiB limit; evicting least-recently-used entries before commit`
-  );
-  try {
-    fresh.sort((a, b) => a.mtimeMs - b.mtimeMs);
-    const toDelete = [];
-    for (const file of fresh) {
-      if (sizeBytes <= limitBytes) {
-        break;
-      }
-      toDelete.push(file);
-      sizeBytes -= file.sizeBytes;
+  /**
+   * Wipes GOMODCACHE if it exceeds its limit. It is wiped rather than
+   * LRU-trimmed because partial deletion corrupts extracted modules. Returns
+   * true if it was wiped.
+   */
+  async trimModCache() {
+    const dir = this.modCachePath;
+    let sizeBytes;
+    try {
+      const files = await scanCache(dir);
+      sizeBytes = files.reduce((sum, f) => sum + f.sizeBytes, 0);
+    } catch (error2) {
+      core3.debug(
+        `Could not scan GOMODCACHE at ${dir}: ${error2 instanceof Error ? error2.message : String(error2)}`
+      );
+      return false;
     }
-    await mapPool(toDelete, (f) => fs2.rm(f.path, { force: true }));
+    const limitBytes = this.modCacheLimitBytes;
+    if (sizeBytes <= limitBytes) {
+      core3.info(
+        `GOMODCACHE at ${dir} is ${toGb(sizeBytes)} GiB, within the ${toGb(limitBytes)} GiB limit`
+      );
+      return false;
+    }
     core3.info(
-      `Evicted ${toDelete.length} least-recently-used build cache entries`
+      `GOMODCACHE at ${dir} is ${toGb(sizeBytes)} GiB, over the ${toGb(limitBytes)} GiB limit; wiping it before commit`
     );
-    return true;
-  } catch (error2) {
-    core3.warning(
-      `Failed to trim GOCACHE at ${dir}: ${error2 instanceof Error ? error2.message : String(error2)}`
-    );
-    return trimmed;
+    try {
+      await execAsync(`${this.sudo ? "sudo " : ""}rm -rf ${shellQuote(dir)}`);
+      await fs2.mkdir(dir, { recursive: true });
+      return true;
+    } catch (error2) {
+      core3.warning(
+        `Failed to wipe GOMODCACHE at ${dir}: ${error2 instanceof Error ? error2.message : String(error2)}`
+      );
+      return false;
+    }
   }
-}
-async function trimModCache(dir) {
-  let sizeBytes;
-  try {
-    const files = await scanCache(dir);
-    sizeBytes = files.reduce((sum, f) => sum + f.sizeBytes, 0);
-  } catch (error2) {
-    core3.debug(
-      `Could not scan GOMODCACHE at ${dir}: ${error2 instanceof Error ? error2.message : String(error2)}`
-    );
-    return false;
-  }
-  const limitBytes = GO_MOD_CACHE_LIMIT_GB * (1 << 30);
-  if (sizeBytes <= limitBytes) {
-    core3.info(
-      `GOMODCACHE at ${dir} is ${toGb(sizeBytes)} GiB, within the ${GO_MOD_CACHE_LIMIT_GB} GiB limit`
-    );
-    return false;
-  }
-  core3.info(
-    `GOMODCACHE at ${dir} is ${toGb(sizeBytes)} GiB, over the ${GO_MOD_CACHE_LIMIT_GB} GiB limit; wiping it before commit`
-  );
-  try {
-    await execAsync(`sudo rm -rf ${shellQuote(dir)}`);
-    await fs2.mkdir(dir, { recursive: true });
-    return true;
-  } catch (error2) {
-    core3.warning(
-      `Failed to wipe GOMODCACHE at ${dir}: ${error2 instanceof Error ? error2.message : String(error2)}`
-    );
-    return false;
-  }
-}
-async function trimGoCaches(stickyDiskPath) {
-  const [buildTrimmed, modTrimmed] = await Promise.all([
-    trimBuildCache(goBuildCachePath(stickyDiskPath)),
-    trimModCache(goModCachePath(stickyDiskPath))
-  ]);
-  return buildTrimmed || modTrimmed;
-}
+};
 
 // src/unmount.ts
 var execAsync2 = promisify3(exec2);
@@ -26044,7 +26073,7 @@ async function runUnmount(options) {
     }
     let goCachesTrimmed = false;
     if (goCaching) {
-      goCachesTrimmed = await trimGoCaches(stickyDiskPath);
+      goCachesTrimmed = await new GoCacheManager(stickyDiskPath).trim();
     }
     await execAsync2("sync");
     let fsDiskUsageBytes = null;

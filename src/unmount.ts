@@ -5,7 +5,7 @@ import { getState } from "@actions/core";
 import { createStickyDiskClient } from "./utils";
 import { CommitIntent, commitIntentFromMode } from "./commit-intent";
 import { checkPreviousStepFailures } from "./step-checker";
-import { trimGoCaches } from "./go-cache";
+import { GoCacheManager } from "./go-cache";
 
 const execAsync = promisify(exec);
 
@@ -290,7 +290,7 @@ export async function runUnmount(options: UnmountOptions): Promise<void> {
     // committed snapshot stays bounded.
     let goCachesTrimmed = false;
     if (goCaching) {
-      goCachesTrimmed = await trimGoCaches(stickyDiskPath);
+      goCachesTrimmed = await new GoCacheManager(stickyDiskPath).trim();
     }
 
     // Ensure all pending writes are flushed to disk before collecting usage.

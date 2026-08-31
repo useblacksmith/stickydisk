@@ -5,7 +5,7 @@ import { exec } from "child_process";
 import * as path from "path";
 import { createStickyDiskClient, getAgentEndpoint } from "./utils";
 import { CommitIntent, commitIntentFromMode } from "./commit-intent";
-import { setupGoCaches } from "./go-cache";
+import { GoCacheManager } from "./go-cache";
 import {
   getWorkspaceLocalParentToChown,
   normalizeMountPath,
@@ -278,7 +278,7 @@ export async function runMount(options: MountOptions): Promise<void> {
     );
     await ensureFallbackDirectory(stickyDiskPath);
     if (goCaching) {
-      await setupGoCaches(stickyDiskPath);
+      await new GoCacheManager(stickyDiskPath).setup();
     }
     return;
   }
@@ -325,7 +325,7 @@ export async function runMount(options: MountOptions): Promise<void> {
   }
 
   if (goCaching) {
-    await setupGoCaches(stickyDiskPath);
+    await new GoCacheManager(stickyDiskPath).setup();
   }
 
   // Record initial disk usage after mount for on-change detection
