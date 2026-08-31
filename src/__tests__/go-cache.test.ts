@@ -249,11 +249,11 @@ interface TestFileOptions {
 }
 
 class TestHarness {
-  static async new(opts: {
+  static async new(options: {
     onTestFinished: (fn: () => Promise<void>) => void;
   }): Promise<TestHarness> {
     const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "go-cache-test-"));
-    opts.onTestFinished(async () => {
+    options.onTestFinished(async () => {
       vi.unstubAllEnvs();
       // Some tests leave read-only directories behind.
       await execAsync(`chmod -R u+w ${shellQuote(tmp)}`).catch(() => undefined);
@@ -268,22 +268,22 @@ class TestHarness {
     this.disk = path.join(tmp, "disk");
   }
 
-  manager(opts: Partial<GoCacheOptions> = {}): GoCacheManager {
+  manager(options: Partial<GoCacheOptions> = {}): GoCacheManager {
     return new GoCacheManager({
       stickyDiskPath: this.disk,
       sudo: false,
-      ...opts,
+      ...options,
     });
   }
 
   /** Writes a file under GOCACHE and returns its absolute path. */
-  writeBuildFile(rel: string, opts?: TestFileOptions): Promise<string> {
-    return this.write(path.join(this.manager().buildCachePath, rel), opts);
+  writeBuildFile(rel: string, options?: TestFileOptions): Promise<string> {
+    return this.write(path.join(this.manager().buildCachePath, rel), options);
   }
 
   /** Writes a file under GOMODCACHE and returns its absolute path. */
-  writeModFile(rel: string, opts?: TestFileOptions): Promise<string> {
-    return this.write(path.join(this.manager().modCachePath, rel), opts);
+  writeModFile(rel: string, options?: TestFileOptions): Promise<string> {
+    return this.write(path.join(this.manager().modCachePath, rel), options);
   }
 
   private async write(
