@@ -1,3 +1,4 @@
+import "../uv-threadpool";
 import { runMount } from "../mount";
 
 runMount({

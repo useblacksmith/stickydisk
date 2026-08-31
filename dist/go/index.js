@@ -187,7 +187,7 @@ var require_file_command = __commonJS({
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.prepareKeyValueMessage = exports.issueFileCommand = void 0;
     var crypto = __importStar(__require("crypto"));
-    var fs = __importStar(__require("fs"));
+    var fs2 = __importStar(__require("fs"));
     var os = __importStar(__require("os"));
     var utils_1 = require_utils();
     function issueFileCommand(command, message) {
@@ -195,10 +195,10 @@ var require_file_command = __commonJS({
       if (!filePath) {
         throw new Error(`Unable to find environment variable for file command ${command}`);
       }
-      if (!fs.existsSync(filePath)) {
+      if (!fs2.existsSync(filePath)) {
         throw new Error(`Missing file at path: ${filePath}`);
       }
-      fs.appendFileSync(filePath, `${(0, utils_1.toCommandValue)(message)}${os.EOL}`, {
+      fs2.appendFileSync(filePath, `${(0, utils_1.toCommandValue)(message)}${os.EOL}`, {
         encoding: "utf8"
       });
     }
@@ -18510,12 +18510,12 @@ var require_io_util = __commonJS({
     var _a;
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.getCmdPath = exports.tryGetExecutablePath = exports.isRooted = exports.isDirectory = exports.exists = exports.READONLY = exports.UV_FS_O_EXLOCK = exports.IS_WINDOWS = exports.unlink = exports.symlink = exports.stat = exports.rmdir = exports.rm = exports.rename = exports.readlink = exports.readdir = exports.open = exports.mkdir = exports.lstat = exports.copyFile = exports.chmod = void 0;
-    var fs = __importStar(__require("fs"));
+    var fs2 = __importStar(__require("fs"));
     var path4 = __importStar(__require("path"));
-    _a = fs.promises, exports.chmod = _a.chmod, exports.copyFile = _a.copyFile, exports.lstat = _a.lstat, exports.mkdir = _a.mkdir, exports.open = _a.open, exports.readdir = _a.readdir, exports.readlink = _a.readlink, exports.rename = _a.rename, exports.rm = _a.rm, exports.rmdir = _a.rmdir, exports.stat = _a.stat, exports.symlink = _a.symlink, exports.unlink = _a.unlink;
+    _a = fs2.promises, exports.chmod = _a.chmod, exports.copyFile = _a.copyFile, exports.lstat = _a.lstat, exports.mkdir = _a.mkdir, exports.open = _a.open, exports.readdir = _a.readdir, exports.readlink = _a.readlink, exports.rename = _a.rename, exports.rm = _a.rm, exports.rmdir = _a.rmdir, exports.stat = _a.stat, exports.symlink = _a.symlink, exports.unlink = _a.unlink;
     exports.IS_WINDOWS = process.platform === "win32";
     exports.UV_FS_O_EXLOCK = 268435456;
-    exports.READONLY = fs.constants.O_RDONLY;
+    exports.READONLY = fs2.constants.O_RDONLY;
     function exists(fsPath) {
       return __awaiter(this, void 0, void 0, function* () {
         try {
@@ -19812,6 +19812,11 @@ Support boolean input list: \`true | True | TRUE | false | False | FALSE\``);
     exports.platform = __importStar(require_platform());
   }
 });
+
+// src/uv-threadpool.ts
+if (!process.env.UV_THREADPOOL_SIZE) {
+  process.env.UV_THREADPOOL_SIZE = "16";
+}
 
 // src/mount.ts
 var import_core = __toESM(require_core(), 1);
@@ -25523,6 +25528,7 @@ function commitIntentFromMode(commitMode) {
 var core2 = __toESM(require_core(), 1);
 import { promisify as promisify2 } from "util";
 import { exec } from "child_process";
+import * as fs from "fs/promises";
 import * as path2 from "path";
 
 // src/path.ts
@@ -25567,12 +25573,14 @@ function goModCachePath(stickyDiskPath) {
 async function setupGoCaches(stickyDiskPath) {
   const buildCache = goBuildCachePath(stickyDiskPath);
   const modCache = goModCachePath(stickyDiskPath);
-  await execAsync(`mkdir -p ${shellQuote(buildCache)} ${shellQuote(modCache)}`);
+  await Promise.all([
+    fs.mkdir(buildCache, { recursive: true }),
+    fs.mkdir(modCache, { recursive: true })
+  ]);
   core2.exportVariable("GOCACHE", buildCache);
   core2.exportVariable("GOMODCACHE", modCache);
   core2.info(`Go caching enabled: GOCACHE=${buildCache} GOMODCACHE=${modCache}`);
 }
-var FIND_MAX_BUFFER_BYTES = 1024 * 1024 * 1024;
 
 // src/mount.ts
 var execAsync2 = promisify3(exec2);

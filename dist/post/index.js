@@ -100,11 +100,11 @@ var require_command = __commonJS({
     };
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.issue = exports.issueCommand = void 0;
-    var os2 = __importStar(__require("os"));
+    var os = __importStar(__require("os"));
     var utils_1 = require_utils();
     function issueCommand(command, properties, message) {
       const cmd = new Command(command, properties, message);
-      process.stdout.write(cmd.toString() + os2.EOL);
+      process.stdout.write(cmd.toString() + os.EOL);
     }
     exports.issueCommand = issueCommand;
     function issue(name, message = "") {
@@ -188,7 +188,7 @@ var require_file_command = __commonJS({
     exports.prepareKeyValueMessage = exports.issueFileCommand = void 0;
     var crypto = __importStar(__require("crypto"));
     var fs3 = __importStar(__require("fs"));
-    var os2 = __importStar(__require("os"));
+    var os = __importStar(__require("os"));
     var utils_1 = require_utils();
     function issueFileCommand(command, message) {
       const filePath = process.env[`GITHUB_${command}`];
@@ -198,7 +198,7 @@ var require_file_command = __commonJS({
       if (!fs3.existsSync(filePath)) {
         throw new Error(`Missing file at path: ${filePath}`);
       }
-      fs3.appendFileSync(filePath, `${(0, utils_1.toCommandValue)(message)}${os2.EOL}`, {
+      fs3.appendFileSync(filePath, `${(0, utils_1.toCommandValue)(message)}${os.EOL}`, {
         encoding: "utf8"
       });
     }
@@ -212,7 +212,7 @@ var require_file_command = __commonJS({
       if (convertedValue.includes(delimiter)) {
         throw new Error(`Unexpected input: value should not contain the delimiter "${delimiter}"`);
       }
-      return `${key}<<${delimiter}${os2.EOL}${convertedValue}${os2.EOL}${delimiter}`;
+      return `${key}<<${delimiter}${os.EOL}${convertedValue}${os.EOL}${delimiter}`;
     }
     exports.prepareKeyValueMessage = prepareKeyValueMessage;
   }
@@ -18145,7 +18145,7 @@ var require_summary = __commonJS({
     exports.summary = exports.markdownSummary = exports.SUMMARY_DOCS_URL = exports.SUMMARY_ENV_VAR = void 0;
     var os_1 = __require("os");
     var fs_1 = __require("fs");
-    var { access, appendFile, writeFile: writeFile2 } = fs_1.promises;
+    var { access, appendFile, writeFile } = fs_1.promises;
     exports.SUMMARY_ENV_VAR = "GITHUB_STEP_SUMMARY";
     exports.SUMMARY_DOCS_URL = "https://docs.github.com/actions/using-workflows/workflow-commands-for-github-actions#adding-a-job-summary";
     var Summary = class {
@@ -18203,7 +18203,7 @@ var require_summary = __commonJS({
         return __awaiter(this, void 0, void 0, function* () {
           const overwrite = !!(options === null || options === void 0 ? void 0 : options.overwrite);
           const filePath = yield this.filePath();
-          const writeFunc = overwrite ? writeFile2 : appendFile;
+          const writeFunc = overwrite ? writeFile : appendFile;
           yield writeFunc(filePath, this._buffer, { encoding: "utf8" });
           return this.emptyBuffer();
         });
@@ -18930,7 +18930,7 @@ var require_toolrunner = __commonJS({
     };
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.argStringToArray = exports.ToolRunner = void 0;
-    var os2 = __importStar(__require("os"));
+    var os = __importStar(__require("os"));
     var events = __importStar(__require("events"));
     var child = __importStar(__require("child_process"));
     var path3 = __importStar(__require("path"));
@@ -18985,12 +18985,12 @@ var require_toolrunner = __commonJS({
       _processLineBuffer(data, strBuffer, onLine) {
         try {
           let s = strBuffer + data.toString();
-          let n = s.indexOf(os2.EOL);
+          let n = s.indexOf(os.EOL);
           while (n > -1) {
             const line = s.substring(0, n);
             onLine(line);
-            s = s.substring(n + os2.EOL.length);
-            n = s.indexOf(os2.EOL);
+            s = s.substring(n + os.EOL.length);
+            n = s.indexOf(os.EOL);
           }
           return s;
         } catch (err) {
@@ -19159,7 +19159,7 @@ var require_toolrunner = __commonJS({
             }
             const optionsNonNull = this._cloneExecOptions(this.options);
             if (!optionsNonNull.silent && optionsNonNull.outStream) {
-              optionsNonNull.outStream.write(this._getCommandString(optionsNonNull) + os2.EOL);
+              optionsNonNull.outStream.write(this._getCommandString(optionsNonNull) + os.EOL);
             }
             const state = new ExecState(optionsNonNull, this.toolPath);
             state.on("debug", (message) => {
@@ -19647,7 +19647,7 @@ var require_core = __commonJS({
     var command_1 = require_command();
     var file_command_1 = require_file_command();
     var utils_1 = require_utils();
-    var os2 = __importStar(__require("os"));
+    var os = __importStar(__require("os"));
     var path3 = __importStar(__require("path"));
     var oidc_utils_1 = require_oidc_utils();
     var ExitCode;
@@ -19715,7 +19715,7 @@ Support boolean input list: \`true | True | TRUE | false | False | FALSE\``);
       if (filePath) {
         return (0, file_command_1.issueFileCommand)("OUTPUT", (0, file_command_1.prepareKeyValueMessage)(name, value));
       }
-      process.stdout.write(os2.EOL);
+      process.stdout.write(os.EOL);
       (0, command_1.issueCommand)("set-output", { name }, (0, utils_1.toCommandValue)(value));
     }
     exports.setOutput = setOutput;
@@ -19749,7 +19749,7 @@ Support boolean input list: \`true | True | TRUE | false | False | FALSE\``);
     }
     exports.notice = notice;
     function info4(message) {
-      process.stdout.write(message + os2.EOL);
+      process.stdout.write(message + os.EOL);
     }
     exports.info = info4;
     function startGroup(name) {
@@ -25637,7 +25637,6 @@ var core3 = __toESM(require_core(), 1);
 import { promisify as promisify2 } from "util";
 import { exec } from "child_process";
 import * as fs2 from "fs/promises";
-import * as os from "os";
 import * as path2 from "path";
 
 // src/path.ts
@@ -25652,146 +25651,169 @@ var GO_MOD_CACHE_SUBDIR = "go/mod";
 var GO_BUILD_CACHE_LIMIT_GB = 50;
 var GO_MOD_CACHE_LIMIT_GB = 15;
 var GO_BUILD_CACHE_MAX_AGE_DAYS = 7;
+var IO_CONCURRENCY = 64;
 function goBuildCachePath(stickyDiskPath) {
   return path2.join(stickyDiskPath, GO_BUILD_CACHE_SUBDIR);
 }
 function goModCachePath(stickyDiskPath) {
   return path2.join(stickyDiskPath, GO_MOD_CACHE_SUBDIR);
 }
-async function dirSizeBytes(dir) {
-  try {
-    const { stdout } = await execAsync(`du -sB1 ${shellQuote(dir)} | cut -f1`);
-    const size = parseInt(stdout.trim(), 10);
-    return isNaN(size) ? null : size;
-  } catch (error2) {
-    core3.debug(
-      `Could not measure size of ${dir}: ${error2 instanceof Error ? error2.message : String(error2)}`
-    );
-    return null;
-  }
-}
-async function wipeDir(dir) {
-  await execAsync(`sudo rm -rf ${shellQuote(dir)}`);
-  await execAsync(`mkdir -p ${shellQuote(dir)}`);
-}
-var FIND_MAX_BUFFER_BYTES = 1024 * 1024 * 1024;
-async function evictStaleBuildCacheEntries(dir) {
-  const { stdout } = await execAsync(
-    `find ${shellQuote(dir)} -type f -mtime +${GO_BUILD_CACHE_MAX_AGE_DAYS} -print -delete | wc -l`,
-    { maxBuffer: FIND_MAX_BUFFER_BYTES }
-  );
-  const count = parseInt(stdout.trim(), 10);
-  if (!count) {
-    return false;
-  }
-  core3.info(
-    `Evicted ${count} build cache entries unused for more than ${GO_BUILD_CACHE_MAX_AGE_DAYS} days`
-  );
-  return true;
-}
-async function trimBuildCacheLru(dir, limitBytes, sizeBytes) {
-  const { stdout } = await execAsync(
-    `find ${shellQuote(dir)} -type f -printf '%T@\\t%s\\t%p\\n' | sort -n`,
-    { maxBuffer: FIND_MAX_BUFFER_BYTES }
-  );
-  let bytesToFree = sizeBytes - limitBytes;
-  const toDelete = [];
-  for (const line of stdout.split("\n")) {
-    if (bytesToFree <= 0) {
-      break;
-    }
-    if (!line) {
-      continue;
-    }
-    const [, sizeStr, ...pathParts] = line.split("	");
-    const fileSize = parseInt(sizeStr, 10);
-    const filePath = pathParts.join("	");
-    if (isNaN(fileSize) || !filePath) {
-      continue;
-    }
-    toDelete.push(filePath);
-    bytesToFree -= fileSize;
-  }
-  if (toDelete.length === 0) {
-    return false;
-  }
-  const listFile = path2.join(
-    os.tmpdir(),
-    `stickydisk-gocache-trim-${Date.now()}`
-  );
-  await fs2.writeFile(listFile, toDelete.join("\n"));
-  try {
-    await execAsync(`xargs -a ${shellQuote(listFile)} -d '\\n' rm -f --`, {
-      maxBuffer: FIND_MAX_BUFFER_BYTES
-    });
-  } finally {
-    await fs2.rm(listFile, { force: true });
-  }
-  core3.info(
-    `Evicted ${toDelete.length} least-recently-used build cache entries`
-  );
-  return true;
-}
-async function trimGoCaches(stickyDiskPath) {
-  const caches = [
-    {
-      name: "GOCACHE",
-      dir: goBuildCachePath(stickyDiskPath),
-      limitGb: GO_BUILD_CACHE_LIMIT_GB,
-      preTrim: evictStaleBuildCacheEntries,
-      trim: trimBuildCacheLru,
-      action: "evicting least-recently-used entries"
-    },
-    {
-      name: "GOMODCACHE",
-      dir: goModCachePath(stickyDiskPath),
-      limitGb: GO_MOD_CACHE_LIMIT_GB,
-      preTrim: void 0,
-      trim: async (dir) => {
-        await wipeDir(dir);
-        return true;
-      },
-      action: "wiping it"
-    }
-  ];
-  const results = await Promise.all(
-    caches.map(async ({ name, dir, limitGb, preTrim, trim, action }) => {
-      let trimmed = false;
-      if (preTrim) {
-        try {
-          trimmed = await preTrim(dir);
-        } catch (error2) {
-          core3.warning(
-            `Failed to evict stale entries from ${name} at ${dir}: ${error2 instanceof Error ? error2.message : String(error2)}`
-          );
+async function mapPool(items, fn) {
+  const out = new Array(items.length);
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(IO_CONCURRENCY, items.length) }, async () => {
+      for (; ; ) {
+        const i = next++;
+        if (i >= items.length) {
+          break;
         }
-      }
-      const sizeBytes = await dirSizeBytes(dir);
-      if (sizeBytes === null) {
-        return trimmed;
-      }
-      const limitBytes = limitGb * (1 << 30);
-      const sizeGb = (sizeBytes / (1 << 30)).toFixed(2);
-      if (sizeBytes <= limitBytes) {
-        core3.info(
-          `${name} at ${dir} is ${sizeGb} GiB, within the ${limitGb} GiB limit`
-        );
-        return trimmed;
-      }
-      core3.info(
-        `${name} at ${dir} is ${sizeGb} GiB, over the ${limitGb} GiB limit; ${action} before commit`
-      );
-      try {
-        return await trim(dir, limitBytes, sizeBytes) || trimmed;
-      } catch (error2) {
-        core3.warning(
-          `Failed to trim ${name} at ${dir}: ${error2 instanceof Error ? error2.message : String(error2)}`
-        );
-        return trimmed;
+        out[i] = await fn(items[i]);
       }
     })
   );
-  return results.some(Boolean);
+  return out;
+}
+async function scanCache(dir) {
+  const filePaths = [];
+  const pending = [dir];
+  while (pending.length > 0) {
+    const batch = pending.splice(0, IO_CONCURRENCY);
+    await Promise.all(
+      batch.map(async (d) => {
+        const entries = await fs2.readdir(d, { withFileTypes: true });
+        for (const entry of entries) {
+          const p = path2.join(d, entry.name);
+          if (entry.isDirectory()) {
+            pending.push(p);
+          } else if (entry.isFile()) {
+            filePaths.push(p);
+          }
+        }
+      })
+    );
+  }
+  const stats = await mapPool(filePaths, (f) => fs2.stat(f).catch(() => null));
+  const files = [];
+  for (let i = 0; i < filePaths.length; i++) {
+    const stat2 = stats[i];
+    if (stat2) {
+      files.push({
+        path: filePaths[i],
+        mtimeMs: stat2.mtimeMs,
+        sizeBytes: stat2.blocks * 512
+      });
+    }
+  }
+  return files;
+}
+function toGb(bytes) {
+  return (bytes / (1 << 30)).toFixed(2);
+}
+async function trimBuildCache(dir) {
+  let files;
+  try {
+    files = await scanCache(dir);
+  } catch (error2) {
+    core3.debug(
+      `Could not scan GOCACHE at ${dir}: ${error2 instanceof Error ? error2.message : String(error2)}`
+    );
+    return false;
+  }
+  const cutoffMs = Date.now() - GO_BUILD_CACHE_MAX_AGE_DAYS * 86400 * 1e3;
+  const stale = [];
+  const fresh = [];
+  for (const file of files) {
+    (file.mtimeMs < cutoffMs ? stale : fresh).push(file);
+  }
+  let trimmed = false;
+  if (stale.length > 0) {
+    try {
+      await mapPool(stale, (f) => fs2.rm(f.path, { force: true }));
+      trimmed = true;
+      core3.info(
+        `Evicted ${stale.length} build cache entries unused for more than ${GO_BUILD_CACHE_MAX_AGE_DAYS} days`
+      );
+    } catch (error2) {
+      core3.warning(
+        `Failed to evict stale entries from GOCACHE at ${dir}: ${error2 instanceof Error ? error2.message : String(error2)}`
+      );
+    }
+  }
+  const limitBytes = GO_BUILD_CACHE_LIMIT_GB * (1 << 30);
+  let sizeBytes = 0;
+  for (const file of fresh) {
+    sizeBytes += file.sizeBytes;
+  }
+  if (sizeBytes <= limitBytes) {
+    core3.info(
+      `GOCACHE at ${dir} is ${toGb(sizeBytes)} GiB, within the ${GO_BUILD_CACHE_LIMIT_GB} GiB limit`
+    );
+    return trimmed;
+  }
+  core3.info(
+    `GOCACHE at ${dir} is ${toGb(sizeBytes)} GiB, over the ${GO_BUILD_CACHE_LIMIT_GB} GiB limit; evicting least-recently-used entries before commit`
+  );
+  try {
+    fresh.sort((a, b) => a.mtimeMs - b.mtimeMs);
+    const toDelete = [];
+    for (const file of fresh) {
+      if (sizeBytes <= limitBytes) {
+        break;
+      }
+      toDelete.push(file);
+      sizeBytes -= file.sizeBytes;
+    }
+    await mapPool(toDelete, (f) => fs2.rm(f.path, { force: true }));
+    core3.info(
+      `Evicted ${toDelete.length} least-recently-used build cache entries`
+    );
+    return true;
+  } catch (error2) {
+    core3.warning(
+      `Failed to trim GOCACHE at ${dir}: ${error2 instanceof Error ? error2.message : String(error2)}`
+    );
+    return trimmed;
+  }
+}
+async function trimModCache(dir) {
+  let sizeBytes;
+  try {
+    const files = await scanCache(dir);
+    sizeBytes = files.reduce((sum, f) => sum + f.sizeBytes, 0);
+  } catch (error2) {
+    core3.debug(
+      `Could not scan GOMODCACHE at ${dir}: ${error2 instanceof Error ? error2.message : String(error2)}`
+    );
+    return false;
+  }
+  const limitBytes = GO_MOD_CACHE_LIMIT_GB * (1 << 30);
+  if (sizeBytes <= limitBytes) {
+    core3.info(
+      `GOMODCACHE at ${dir} is ${toGb(sizeBytes)} GiB, within the ${GO_MOD_CACHE_LIMIT_GB} GiB limit`
+    );
+    return false;
+  }
+  core3.info(
+    `GOMODCACHE at ${dir} is ${toGb(sizeBytes)} GiB, over the ${GO_MOD_CACHE_LIMIT_GB} GiB limit; wiping it before commit`
+  );
+  try {
+    await execAsync(`sudo rm -rf ${shellQuote(dir)}`);
+    await fs2.mkdir(dir, { recursive: true });
+    return true;
+  } catch (error2) {
+    core3.warning(
+      `Failed to wipe GOMODCACHE at ${dir}: ${error2 instanceof Error ? error2.message : String(error2)}`
+    );
+    return false;
+  }
+}
+async function trimGoCaches(stickyDiskPath) {
+  const [buildTrimmed, modTrimmed] = await Promise.all([
+    trimBuildCache(goBuildCachePath(stickyDiskPath)),
+    trimModCache(goModCachePath(stickyDiskPath))
+  ]);
+  return buildTrimmed || modTrimmed;
 }
 
 // src/unmount.ts
