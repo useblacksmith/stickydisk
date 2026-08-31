@@ -25925,7 +25925,7 @@ var GoCacheManager = class {
       return trimmed;
     }
     core2.info(
-      `GOCACHE at ${dir} is ${toGb(sizeBytes)} GiB, over the ${toGb(limitBytes)} GiB limit; evicting least-recently-used entries before commit`
+      `GOCACHE is ${toGb(sizeBytes)} GiB, over the ${toGb(limitBytes)} GiB limit; removing old entries`
     );
     try {
       fresh.sort((a, b) => a.mtimeMs - b.mtimeMs);
@@ -25940,9 +25940,7 @@ var GoCacheManager = class {
       await pMap(toDelete, (f) => fs.rm(f.path, { force: true }), {
         concurrency: IO_CONCURRENCY
       });
-      core2.info(
-        `Evicted ${toDelete.length} least-recently-used build cache entries`
-      );
+      core2.info(`Removed ${toDelete.length} old build cache entries`);
       return true;
     } catch (error2) {
       core2.warning(
@@ -25976,7 +25974,7 @@ var GoCacheManager = class {
       return false;
     }
     core2.info(
-      `GOMODCACHE at ${dir} is ${toGb(sizeBytes)} GiB, over the ${toGb(limitBytes)} GiB limit; wiping it before commit`
+      `GOMODCACHE is ${toGb(sizeBytes)} GiB, over the ${toGb(limitBytes)} GiB limit; wiping cache`
     );
     try {
       await execAsync(`${this.sudo ? "sudo " : ""}rm -rf ${shellQuote(dir)}`);
