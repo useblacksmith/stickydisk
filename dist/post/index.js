@@ -25930,8 +25930,11 @@ var IO_CONCURRENCY = 64;
 var GoCacheManager = class {
   constructor(stickyDiskPath, {
     buildCacheLimitBytes = 50 * (1 << 30),
+    // 50 GiB
     buildCacheMaxAgeMs = 7 * 86400 * 1e3,
+    // 7 days
     modCacheLimitBytes = 15 * (1 << 30),
+    // 15 GiB
     sudo = true
   } = {}) {
     this.buildCachePath = path2.join(stickyDiskPath, "go/build");
