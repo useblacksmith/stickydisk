@@ -71,7 +71,7 @@ Blacksmith natively supports [Bazel remote caching](https://docs.blacksmith.sh/b
 
 ## Go Build and Module Cache
 
-The `useblacksmith/stickydisk/go` action puts `GOCACHE` and `GOMODCACHE` on a single sticky disk and exports them for subsequent steps. After the job, each cache is trimmed if it exceeds its size limit (50 GiB build, 15 GiB modules).
+The `useblacksmith/stickydisk/go` action puts `GOCACHE` and `GOMODCACHE` on a single sticky disk and exports them for subsequent steps. After the job, each cache is trimmed if it exceeds its size limit (100 GiB build, 15 GiB modules).
 
 ```yaml
 jobs:

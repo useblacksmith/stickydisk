@@ -44,7 +44,7 @@ export class GoCacheManager {
   constructor(
     stickyDiskPath: string,
     {
-      buildCacheLimitBytes = 50 * (1 << 30), // 50 GiB
+      buildCacheLimitBytes = 100 * (1 << 30), // 100 GiB
       buildCacheMaxAgeMs = 7 * 86400 * 1000, // 7 days
       modCacheLimitBytes = 15 * (1 << 30), // 15 GiB
       sudo = true,
