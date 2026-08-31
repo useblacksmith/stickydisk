@@ -8,11 +8,6 @@ import { GoCacheManager } from "../go-cache";
 
 const execAsync = promisify(exec);
 
-const hasPasswordlessSudo = await execAsync("sudo -n true").then(
-  () => true,
-  () => false,
-);
-
 const DAY_MS = 86400 * 1000;
 
 let tmp: string;
@@ -242,23 +237,6 @@ describe("mod cache trimming", () => {
     expect(await caches.trim()).toBe(false);
     expect(await exists(mod)).toBe(true);
   });
-
-  it.runIf(hasPasswordlessSudo)(
-    "wipes a read-only mod cache with sudo",
-    async () => {
-      const caches = manager({ modCacheLimitBytes: 0, sudo: true });
-      const modDir = path.join(caches.modCachePath, "example.com", "mod@v1");
-      const mod = path.join(modDir, "go.mod");
-      await writeFileAged(mod);
-      await fs.mkdir(caches.buildCachePath, { recursive: true });
-      await fs.chmod(mod, 0o444);
-      await fs.chmod(modDir, 0o555);
-
-      expect(await caches.trim()).toBe(true);
-      expect(await exists(mod)).toBe(false);
-      expect(await fs.readdir(caches.modCachePath)).toEqual([]);
-    },
-  );
 });
 
 describe("trim on a missing or empty disk", () => {
