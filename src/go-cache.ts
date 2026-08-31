@@ -25,6 +25,14 @@ interface CacheFile {
   sizeBytes: number;
 }
 
+export interface GoCacheOptions {
+  buildCacheLimitBytes?: number;
+  buildCacheMaxAgeMs?: number;
+  modCacheLimitBytes?: number;
+  /** Wipe the mod cache with sudo (its extracted modules are read-only). */
+  sudo?: boolean;
+}
+
 export class GoCacheManager {
   readonly buildCachePath: string;
   readonly modCachePath: string;
@@ -40,13 +48,7 @@ export class GoCacheManager {
       buildCacheMaxAgeMs = 7 * 86400 * 1000, // 7 days
       modCacheLimitBytes = 15 * (1 << 30), // 15 GiB
       sudo = true,
-    }: {
-      buildCacheLimitBytes?: number;
-      buildCacheMaxAgeMs?: number;
-      modCacheLimitBytes?: number;
-      /** Wipe the mod cache with sudo (its extracted modules are read-only). */
-      sudo?: boolean;
-    } = {},
+    }: GoCacheOptions = {},
   ) {
     this.buildCachePath = path.join(stickyDiskPath, "go/build");
     this.modCachePath = path.join(stickyDiskPath, "go/mod");
