@@ -4,7 +4,7 @@ import * as os from "os";
 import * as path from "path";
 import { promisify } from "util";
 import { exec } from "child_process";
-import { GoCacheManager, GoCacheOptions } from "../go-cache";
+import { GoCacheManager } from "../go-cache";
 
 const execAsync = promisify(exec);
 
@@ -28,6 +28,8 @@ afterEach(async () => {
   await execAsync(`chmod -R u+w ${JSON.stringify(tmp)}`).catch(() => undefined);
   await fs.rm(tmp, { recursive: true, force: true });
 });
+
+type GoCacheOptions = ConstructorParameters<typeof GoCacheManager>[1];
 
 function manager(options: GoCacheOptions = {}): GoCacheManager {
   return new GoCacheManager(disk, { sudo: false, ...options });
