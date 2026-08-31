@@ -19,7 +19,7 @@ const it = test.extend<{ h: TestHarness }>({
 
 describe("GoCacheManager", () => {
   it("places both caches under the sticky disk mount", () => {
-    const caches = new GoCacheManager("/mnt/go-cache");
+    const caches = new GoCacheManager({ stickyDiskPath: "/mnt/go-cache" });
     expect(caches.buildCachePath).toBe("/mnt/go-cache/go/build");
     expect(caches.modCachePath).toBe("/mnt/go-cache/go/mod");
   });
@@ -203,7 +203,10 @@ describe("GoCacheManager", () => {
 
         // Without quoting, the space and apostrophe would break the command.
         const disk = path.join(h.tmp, "sticky disk's");
-        const caches = new GoCacheManager(disk, { modCacheLimitBytes: 0 });
+        const caches = new GoCacheManager({
+          stickyDiskPath: disk,
+          modCacheLimitBytes: 0,
+        });
         const mod = path.join(caches.modCachePath, "example.com/mod@v1/go.mod");
         await fs.mkdir(path.dirname(mod), { recursive: true });
         await fs.writeFile(mod, "data");
@@ -265,8 +268,12 @@ class TestHarness {
     this.disk = path.join(tmp, "disk");
   }
 
-  manager(opts: GoCacheOptions = {}): GoCacheManager {
-    return new GoCacheManager(this.disk, { sudo: false, ...opts });
+  manager(opts: Partial<GoCacheOptions> = {}): GoCacheManager {
+    return new GoCacheManager({
+      stickyDiskPath: this.disk,
+      sudo: false,
+      ...opts,
+    });
   }
 
   /** Writes a file under GOCACHE and returns its absolute path. */

@@ -25933,7 +25933,8 @@ function shellQuote(value) {
 var execAsync = promisify2(exec);
 var IO_CONCURRENCY = 64;
 var GoCacheManager = class {
-  constructor(stickyDiskPath, {
+  constructor({
+    stickyDiskPath,
     buildCacheLimitBytes = 100 * (1 << 30),
     // 100 GiB
     buildCacheMaxAgeMs = 7 * 86400 * 1e3,
@@ -25941,7 +25942,7 @@ var GoCacheManager = class {
     modCacheLimitBytes = 15 * (1 << 30),
     // 15 GiB
     sudo = true
-  } = {}) {
+  }) {
     this.buildCachePath = path2.join(stickyDiskPath, "go/build");
     this.modCachePath = path2.join(stickyDiskPath, "go/mod");
     this.buildCacheLimitBytes = buildCacheLimitBytes;
@@ -26345,7 +26346,7 @@ async function runUnmount(options) {
       return;
     }
     if (goCaching) {
-      await new GoCacheManager(stickyDiskPath).trim();
+      await new GoCacheManager({ stickyDiskPath }).trim();
     }
     await execAsync2("sync");
     let fsDiskUsageBytes = null;

@@ -290,7 +290,7 @@ export async function runUnmount(options: UnmountOptions): Promise<void> {
     // committed snapshot stays bounded. This runs before usage is measured,
     // so in on-change mode a trim registers as a change and gets committed.
     if (goCaching) {
-      await new GoCacheManager(stickyDiskPath).trim();
+      await new GoCacheManager({ stickyDiskPath }).trim();
     }
 
     // Ensure all pending writes are flushed to disk before collecting usage.

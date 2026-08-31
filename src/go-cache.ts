@@ -26,6 +26,7 @@ interface CacheFile {
 }
 
 export interface GoCacheOptions {
+  stickyDiskPath: string;
   buildCacheLimitBytes?: number;
   buildCacheMaxAgeMs?: number;
   modCacheLimitBytes?: number;
@@ -41,15 +42,13 @@ export class GoCacheManager {
   private readonly modCacheLimitBytes: number;
   private readonly sudo: boolean;
 
-  constructor(
-    stickyDiskPath: string,
-    {
-      buildCacheLimitBytes = 100 * (1 << 30), // 100 GiB
-      buildCacheMaxAgeMs = 7 * 86400 * 1000, // 7 days
-      modCacheLimitBytes = 15 * (1 << 30), // 15 GiB
-      sudo = true,
-    }: GoCacheOptions = {},
-  ) {
+  constructor({
+    stickyDiskPath,
+    buildCacheLimitBytes = 100 * (1 << 30), // 100 GiB
+    buildCacheMaxAgeMs = 7 * 86400 * 1000, // 7 days
+    modCacheLimitBytes = 15 * (1 << 30), // 15 GiB
+    sudo = true,
+  }: GoCacheOptions) {
     this.buildCachePath = path.join(stickyDiskPath, "go/build");
     this.modCachePath = path.join(stickyDiskPath, "go/mod");
     this.buildCacheLimitBytes = buildCacheLimitBytes;

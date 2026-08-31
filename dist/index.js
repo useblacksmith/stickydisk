@@ -25839,7 +25839,8 @@ function getWorkspaceLocalParentToChown(mountPath, cwd = process.cwd()) {
 var execAsync = promisify2(exec);
 var IO_CONCURRENCY = 64;
 var GoCacheManager = class {
-  constructor(stickyDiskPath, {
+  constructor({
+    stickyDiskPath,
     buildCacheLimitBytes = 100 * (1 << 30),
     // 100 GiB
     buildCacheMaxAgeMs = 7 * 86400 * 1e3,
@@ -25847,7 +25848,7 @@ var GoCacheManager = class {
     modCacheLimitBytes = 15 * (1 << 30),
     // 15 GiB
     sudo = true
-  } = {}) {
+  }) {
     this.buildCachePath = path2.join(stickyDiskPath, "go/build");
     this.modCachePath = path2.join(stickyDiskPath, "go/mod");
     this.buildCacheLimitBytes = buildCacheLimitBytes;
@@ -26208,7 +26209,7 @@ async function runMount(options) {
     );
     await ensureFallbackDirectory(stickyDiskPath);
     if (goCaching) {
-      await new GoCacheManager(stickyDiskPath).setup();
+      await new GoCacheManager({ stickyDiskPath }).setup();
     }
     return;
   }
@@ -26247,7 +26248,7 @@ async function runMount(options) {
     await ensureFallbackDirectory(stickyDiskPath);
   }
   if (goCaching) {
-    await new GoCacheManager(stickyDiskPath).setup();
+    await new GoCacheManager({ stickyDiskPath }).setup();
   }
   if (!stickyDiskError && commitIntent === CommitIntent2.ON_CHANGE) {
     const initialUsage = await getInitialDiskUsage(stickyDiskPath);
