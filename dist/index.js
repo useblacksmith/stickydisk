@@ -25839,13 +25839,18 @@ function getWorkspaceLocalParentToChown(mountPath, cwd = process.cwd()) {
 var execAsync = promisify2(exec);
 var IO_CONCURRENCY = 64;
 var GoCacheManager = class {
-  constructor(stickyDiskPath, opts = {}) {
+  constructor(stickyDiskPath, {
+    buildCacheLimitBytes = 50 * (1 << 30),
+    buildCacheMaxAgeMs = 7 * 86400 * 1e3,
+    modCacheLimitBytes = 15 * (1 << 30),
+    sudo = true
+  } = {}) {
     this.buildCachePath = path2.join(stickyDiskPath, "go/build");
     this.modCachePath = path2.join(stickyDiskPath, "go/mod");
-    this.buildCacheLimitBytes = opts.buildCacheLimitBytes ?? 50 * (1 << 30);
-    this.buildCacheMaxAgeMs = opts.buildCacheMaxAgeMs ?? 7 * 86400 * 1e3;
-    this.modCacheLimitBytes = opts.modCacheLimitBytes ?? 15 * (1 << 30);
-    this.sudo = opts.sudo ?? true;
+    this.buildCacheLimitBytes = buildCacheLimitBytes;
+    this.buildCacheMaxAgeMs = buildCacheMaxAgeMs;
+    this.modCacheLimitBytes = modCacheLimitBytes;
+    this.sudo = sudo;
   }
   async setup() {
     await Promise.all([

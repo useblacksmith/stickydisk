@@ -41,13 +41,21 @@ export class GoCacheManager {
   private readonly modCacheLimitBytes: number;
   private readonly sudo: boolean;
 
-  constructor(stickyDiskPath: string, opts: GoCacheOptions = {}) {
+  constructor(
+    stickyDiskPath: string,
+    {
+      buildCacheLimitBytes = 50 * (1 << 30),
+      buildCacheMaxAgeMs = 7 * 86400 * 1000,
+      modCacheLimitBytes = 15 * (1 << 30),
+      sudo = true,
+    }: GoCacheOptions = {},
+  ) {
     this.buildCachePath = path.join(stickyDiskPath, "go/build");
     this.modCachePath = path.join(stickyDiskPath, "go/mod");
-    this.buildCacheLimitBytes = opts.buildCacheLimitBytes ?? 50 * (1 << 30);
-    this.buildCacheMaxAgeMs = opts.buildCacheMaxAgeMs ?? 7 * 86400 * 1000;
-    this.modCacheLimitBytes = opts.modCacheLimitBytes ?? 15 * (1 << 30);
-    this.sudo = opts.sudo ?? true;
+    this.buildCacheLimitBytes = buildCacheLimitBytes;
+    this.buildCacheMaxAgeMs = buildCacheMaxAgeMs;
+    this.modCacheLimitBytes = modCacheLimitBytes;
+    this.sudo = sudo;
   }
 
   async setup(): Promise<void> {
