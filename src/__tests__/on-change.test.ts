@@ -18,9 +18,11 @@ describe("evaluateOnChangeCommit", () => {
       `usage at teardown ${formatBytes(initial + ON_CHANGE_THRESHOLD_BYTES)}`,
     );
     expect(verdict.summary).toContain(
-      `delta +${ON_CHANGE_THRESHOLD_BYTES} bytes`,
+      `change +${ON_CHANGE_THRESHOLD_BYTES} bytes`,
     );
-    expect(verdict.summary).toContain(`> ${ON_CHANGE_THRESHOLD_BYTES} bytes`);
+    expect(verdict.summary).toContain(
+      `more than ${ON_CHANGE_THRESHOLD_BYTES} bytes between mount and teardown`,
+    );
     expect(verdict.summary).toContain("verdict: skip commit");
   });
 
@@ -31,7 +33,7 @@ describe("evaluateOnChangeCommit", () => {
     );
     expect(verdict.commit).toBe(true);
     expect(verdict.summary).toContain(
-      `delta +${ON_CHANGE_THRESHOLD_BYTES + 1} bytes`,
+      `change +${ON_CHANGE_THRESHOLD_BYTES + 1} bytes`,
     );
     expect(verdict.summary).toContain("verdict: request commit");
   });
@@ -42,7 +44,7 @@ describe("evaluateOnChangeCommit", () => {
       initial - (1 << 20),
     );
     expect(verdict.commit).toBe(true);
-    expect(verdict.summary).toContain(`delta -${1 << 20} bytes`);
+    expect(verdict.summary).toContain(`change -${1 << 20} bytes`);
     expect(verdict.summary).toContain("verdict: request commit");
   });
 

@@ -7,7 +7,7 @@ export function formatBytes(bytes: number): string {
   return `${bytes} bytes (${(bytes / (1 << 30)).toFixed(2)} GiB)`;
 }
 
-export const ON_CHANGE_CRITERIA = `request a commit only if |usage at teardown - usage at mount| > ${ON_CHANGE_THRESHOLD_BYTES} bytes`;
+export const ON_CHANGE_CRITERIA = `request a commit only if usage changes by more than ${ON_CHANGE_THRESHOLD_BYTES} bytes between mount and teardown`;
 
 export interface OnChangeVerdict {
   commit: boolean;
@@ -52,17 +52,17 @@ export function evaluateOnChangeCommit(
   }
 
   const delta = fsDiskUsageBytes - initialUsageBytes;
-  const measurements = `usage at mount ${formatBytes(initialUsageBytes)}, usage at teardown ${formatBytes(fsDiskUsageBytes)}, delta ${delta >= 0 ? "+" : "-"}${Math.abs(delta)} bytes`;
+  const measurements = `usage at mount ${formatBytes(initialUsageBytes)}, usage at teardown ${formatBytes(fsDiskUsageBytes)}, change ${delta >= 0 ? "+" : "-"}${Math.abs(delta)} bytes`;
 
   if (Math.abs(delta) <= ON_CHANGE_THRESHOLD_BYTES) {
     return {
       commit: false,
-      summary: `${prefix} ${measurements} -> verdict: skip commit (delta within ${ON_CHANGE_THRESHOLD_BYTES} byte threshold, filesystem unchanged)`,
+      summary: `${prefix} ${measurements} -> verdict: skip commit (change is within the ${ON_CHANGE_THRESHOLD_BYTES} byte threshold, filesystem unchanged)`,
     };
   }
 
   return {
     commit: true,
-    summary: `${prefix} ${measurements} -> verdict: request commit (delta exceeds ${ON_CHANGE_THRESHOLD_BYTES} byte threshold, filesystem changed)`,
+    summary: `${prefix} ${measurements} -> verdict: request commit (change exceeds the ${ON_CHANGE_THRESHOLD_BYTES} byte threshold, filesystem changed)`,
   };
 }

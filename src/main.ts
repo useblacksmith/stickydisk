@@ -357,7 +357,7 @@ async function run(): Promise<void> {
       );
     } else {
       core.warning(
-        `on-change commit: could not measure filesystem usage at mount, so changes cannot be detected; the post step will commit to be safe`,
+        `on-change commit: could not measure filesystem usage at mount, so changes cannot be detected; the post step will request a commit to be safe`,
       );
     }
   }
