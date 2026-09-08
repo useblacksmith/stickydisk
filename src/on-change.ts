@@ -7,7 +7,7 @@ export function formatBytes(bytes: number): string {
   return `${bytes} bytes (${(bytes / (1 << 30)).toFixed(2)} GiB)`;
 }
 
-export const ON_CHANGE_CRITERIA = `request a commit only if usage changes by more than ${ON_CHANGE_THRESHOLD_BYTES} bytes between mount and teardown`;
+export const ON_CHANGE_CRITERIA = `request a commit only if filesystem usage changes by more than ${ON_CHANGE_THRESHOLD_BYTES} bytes between mount and teardown`;
 
 export interface OnChangeVerdict {
   commit: boolean;
@@ -27,12 +27,12 @@ export function evaluateOnChangeCommit(
   initialUsageBytesStr: string,
   fsDiskUsageBytes: number | null,
 ): OnChangeVerdict {
-  const prefix = `on-change commit check (${ON_CHANGE_CRITERIA}):`;
+  const prefix = "on-change commit check:";
 
   if (!initialUsageBytesStr) {
     return {
       commit: true,
-      summary: `${prefix} no filesystem usage was recorded at mount time, so changes cannot be detected -> verdict: request commit (to be safe)`,
+      summary: `${prefix} no filesystem usage was recorded at mount time, so the change cannot be measured -> verdict: request commit (to be safe)`,
     };
   }
 
@@ -40,29 +40,29 @@ export function evaluateOnChangeCommit(
   if (isNaN(initialUsageBytes)) {
     return {
       commit: true,
-      summary: `${prefix} filesystem usage recorded at mount time is invalid ("${initialUsageBytesStr}"), so changes cannot be detected -> verdict: request commit (to be safe)`,
+      summary: `${prefix} filesystem usage recorded at mount time is invalid ("${initialUsageBytesStr}"), so the change cannot be measured -> verdict: request commit (to be safe)`,
     };
   }
 
   if (fsDiskUsageBytes === null) {
     return {
       commit: true,
-      summary: `${prefix} usage at mount ${formatBytes(initialUsageBytes)}, usage at teardown could not be measured, so changes cannot be detected -> verdict: request commit (to be safe)`,
+      summary: `${prefix} filesystem usage at teardown could not be measured, so the change is unknown -> verdict: request commit (to be safe)`,
     };
   }
 
   const delta = fsDiskUsageBytes - initialUsageBytes;
-  const measurements = `usage at mount ${formatBytes(initialUsageBytes)}, usage at teardown ${formatBytes(fsDiskUsageBytes)}, change ${delta >= 0 ? "+" : "-"}${Math.abs(delta)} bytes`;
+  const change = `filesystem usage changed by ${delta >= 0 ? "+" : "-"}${Math.abs(delta)} bytes between mount and teardown`;
 
   if (Math.abs(delta) <= ON_CHANGE_THRESHOLD_BYTES) {
     return {
       commit: false,
-      summary: `${prefix} ${measurements} -> verdict: skip commit (change is within the ${ON_CHANGE_THRESHOLD_BYTES} byte threshold, filesystem unchanged)`,
+      summary: `${prefix} ${change} -> verdict: skip commit (change is within the ${ON_CHANGE_THRESHOLD_BYTES} byte threshold)`,
     };
   }
 
   return {
     commit: true,
-    summary: `${prefix} ${measurements} -> verdict: request commit (change exceeds the ${ON_CHANGE_THRESHOLD_BYTES} byte threshold, filesystem changed)`,
+    summary: `${prefix} ${change} -> verdict: request commit (change exceeds the ${ON_CHANGE_THRESHOLD_BYTES} byte threshold)`,
   };
 }

@@ -13,17 +13,12 @@ describe("evaluateOnChangeCommit", () => {
       initial + ON_CHANGE_THRESHOLD_BYTES,
     );
     expect(verdict.commit).toBe(false);
-    expect(verdict.summary).toContain(`usage at mount ${formatBytes(initial)}`);
     expect(verdict.summary).toContain(
-      `usage at teardown ${formatBytes(initial + ON_CHANGE_THRESHOLD_BYTES)}`,
+      `filesystem usage changed by +${ON_CHANGE_THRESHOLD_BYTES} bytes between mount and teardown`,
     );
     expect(verdict.summary).toContain(
-      `change +${ON_CHANGE_THRESHOLD_BYTES} bytes`,
+      `verdict: skip commit (change is within the ${ON_CHANGE_THRESHOLD_BYTES} byte threshold)`,
     );
-    expect(verdict.summary).toContain(
-      `more than ${ON_CHANGE_THRESHOLD_BYTES} bytes between mount and teardown`,
-    );
-    expect(verdict.summary).toContain("verdict: skip commit");
   });
 
   it("commits when usage grew past the threshold", () => {
@@ -33,9 +28,11 @@ describe("evaluateOnChangeCommit", () => {
     );
     expect(verdict.commit).toBe(true);
     expect(verdict.summary).toContain(
-      `change +${ON_CHANGE_THRESHOLD_BYTES + 1} bytes`,
+      `filesystem usage changed by +${ON_CHANGE_THRESHOLD_BYTES + 1} bytes`,
     );
-    expect(verdict.summary).toContain("verdict: request commit");
+    expect(verdict.summary).toContain(
+      `verdict: request commit (change exceeds the ${ON_CHANGE_THRESHOLD_BYTES} byte threshold)`,
+    );
   });
 
   it("commits when usage shrank past the threshold", () => {
@@ -44,7 +41,9 @@ describe("evaluateOnChangeCommit", () => {
       initial - (1 << 20),
     );
     expect(verdict.commit).toBe(true);
-    expect(verdict.summary).toContain(`change -${1 << 20} bytes`);
+    expect(verdict.summary).toContain(
+      `filesystem usage changed by -${1 << 20} bytes`,
+    );
     expect(verdict.summary).toContain("verdict: request commit");
   });
 
@@ -65,8 +64,9 @@ describe("evaluateOnChangeCommit", () => {
   it("commits to be safe when usage at teardown could not be measured", () => {
     const verdict = evaluateOnChangeCommit(String(initial), null);
     expect(verdict.commit).toBe(true);
-    expect(verdict.summary).toContain(`usage at mount ${formatBytes(initial)}`);
-    expect(verdict.summary).toContain("could not be measured");
+    expect(verdict.summary).toContain(
+      "filesystem usage at teardown could not be measured",
+    );
     expect(verdict.summary).toContain("verdict: request commit (to be safe)");
   });
 });
