@@ -36829,7 +36829,7 @@ const ON_CHANGE_THRESHOLD_BYTES = 4096;
 function formatBytes(bytes) {
     return `${bytes} bytes (${(bytes / (1 << 30)).toFixed(2)} GiB)`;
 }
-const ON_CHANGE_CRITERIA = (/* unused pure expression or super */ null && (`request a commit only if filesystem usage changes by more than ${ON_CHANGE_THRESHOLD_BYTES} bytes between mount and teardown`));
+const ON_CHANGE_CRITERIA = (/* unused pure expression or super */ null && (`commit is requested only if usage changes by more than ${ON_CHANGE_THRESHOLD_BYTES} bytes`));
 /**
  * Decides whether a commit should be requested for an on-change disk from the filesystem
  * usage recorded at mount time (as saved in action state) and the usage
@@ -36838,37 +36838,36 @@ const ON_CHANGE_CRITERIA = (/* unused pure expression or super */ null && (`requ
  * commit.
  */
 function evaluateOnChangeCommit(initialUsageBytesStr, fsDiskUsageBytes) {
-    const prefix = "on-change commit check:";
     if (!initialUsageBytesStr) {
         return {
             commit: true,
-            summary: `${prefix} no filesystem usage was recorded at mount time, so the change cannot be measured -> verdict: request commit (to be safe)`,
+            summary: "on-change: requesting commit, no usage recorded at mount",
         };
     }
     const initialUsageBytes = parseInt(initialUsageBytesStr, 10);
     if (isNaN(initialUsageBytes)) {
         return {
             commit: true,
-            summary: `${prefix} filesystem usage recorded at mount time is invalid ("${initialUsageBytesStr}"), so the change cannot be measured -> verdict: request commit (to be safe)`,
+            summary: `on-change: requesting commit, usage recorded at mount is invalid ("${initialUsageBytesStr}")`,
         };
     }
     if (fsDiskUsageBytes === null) {
         return {
             commit: true,
-            summary: `${prefix} filesystem usage at teardown could not be measured, so the change is unknown -> verdict: request commit (to be safe)`,
+            summary: "on-change: requesting commit, could not measure usage at teardown",
         };
     }
     const delta = fsDiskUsageBytes - initialUsageBytes;
-    const change = `filesystem usage changed by ${delta >= 0 ? "+" : "-"}${Math.abs(delta)} bytes between mount and teardown`;
+    const change = `usage changed by ${delta >= 0 ? "+" : "-"}${Math.abs(delta)} bytes`;
     if (Math.abs(delta) <= ON_CHANGE_THRESHOLD_BYTES) {
         return {
             commit: false,
-            summary: `${prefix} ${change} -> verdict: skip commit (change is within the ${ON_CHANGE_THRESHOLD_BYTES} byte threshold)`,
+            summary: `on-change: not committing, ${change} (within the ${ON_CHANGE_THRESHOLD_BYTES} byte threshold)`,
         };
     }
     return {
         commit: true,
-        summary: `${prefix} ${change} -> verdict: request commit (change exceeds the ${ON_CHANGE_THRESHOLD_BYTES} byte threshold)`,
+        summary: `on-change: requesting commit, ${change} (over the ${ON_CHANGE_THRESHOLD_BYTES} byte threshold)`,
     };
 }
 

@@ -352,15 +352,13 @@ async function run(): Promise<void> {
     const initialUsage = await getInitialDiskUsage(stickyDiskPath);
     if (initialUsage) {
       saveState("STICKYDISK_INITIAL_USAGE_BYTES", initialUsage);
-      core.info(
-        `on-change commit: recorded filesystem usage at mount; the post step will ${ON_CHANGE_CRITERIA}`,
-      );
+      core.info(`on-change: ${ON_CHANGE_CRITERIA}`);
       core.debug(
-        `on-change commit: usage at mount is ${formatBytes(parseInt(initialUsage, 10))}`,
+        `on-change: usage at mount is ${formatBytes(parseInt(initialUsage, 10))}`,
       );
     } else {
       core.warning(
-        `on-change commit: could not measure filesystem usage at mount, so the change cannot be measured; the post step will request a commit to be safe`,
+        `on-change: could not measure usage at mount; the post step will request a commit`,
       );
     }
   }

@@ -13,11 +13,8 @@ describe("evaluateOnChangeCommit", () => {
       initial + ON_CHANGE_THRESHOLD_BYTES,
     );
     expect(verdict.commit).toBe(false);
-    expect(verdict.summary).toContain(
-      `filesystem usage changed by +${ON_CHANGE_THRESHOLD_BYTES} bytes between mount and teardown`,
-    );
-    expect(verdict.summary).toContain(
-      `verdict: skip commit (change is within the ${ON_CHANGE_THRESHOLD_BYTES} byte threshold)`,
+    expect(verdict.summary).toBe(
+      `on-change: not committing, usage changed by +${ON_CHANGE_THRESHOLD_BYTES} bytes (within the ${ON_CHANGE_THRESHOLD_BYTES} byte threshold)`,
     );
   });
 
@@ -27,11 +24,8 @@ describe("evaluateOnChangeCommit", () => {
       initial + ON_CHANGE_THRESHOLD_BYTES + 1,
     );
     expect(verdict.commit).toBe(true);
-    expect(verdict.summary).toContain(
-      `filesystem usage changed by +${ON_CHANGE_THRESHOLD_BYTES + 1} bytes`,
-    );
-    expect(verdict.summary).toContain(
-      `verdict: request commit (change exceeds the ${ON_CHANGE_THRESHOLD_BYTES} byte threshold)`,
+    expect(verdict.summary).toBe(
+      `on-change: requesting commit, usage changed by +${ON_CHANGE_THRESHOLD_BYTES + 1} bytes (over the ${ON_CHANGE_THRESHOLD_BYTES} byte threshold)`,
     );
   });
 
@@ -42,32 +36,32 @@ describe("evaluateOnChangeCommit", () => {
     );
     expect(verdict.commit).toBe(true);
     expect(verdict.summary).toContain(
-      `filesystem usage changed by -${1 << 20} bytes`,
+      `requesting commit, usage changed by -${1 << 20} bytes`,
     );
-    expect(verdict.summary).toContain("verdict: request commit");
   });
 
   it("commits to be safe when no usage was recorded at mount", () => {
     const verdict = evaluateOnChangeCommit("", initial);
     expect(verdict.commit).toBe(true);
-    expect(verdict.summary).toContain("no filesystem usage was recorded");
-    expect(verdict.summary).toContain("verdict: request commit (to be safe)");
+    expect(verdict.summary).toBe(
+      "on-change: requesting commit, no usage recorded at mount",
+    );
   });
 
   it("commits to be safe when the recorded usage is not a number", () => {
     const verdict = evaluateOnChangeCommit("garbage", initial);
     expect(verdict.commit).toBe(true);
-    expect(verdict.summary).toContain('invalid ("garbage")');
-    expect(verdict.summary).toContain("verdict: request commit (to be safe)");
+    expect(verdict.summary).toBe(
+      'on-change: requesting commit, usage recorded at mount is invalid ("garbage")',
+    );
   });
 
   it("commits to be safe when usage at teardown could not be measured", () => {
     const verdict = evaluateOnChangeCommit(String(initial), null);
     expect(verdict.commit).toBe(true);
-    expect(verdict.summary).toContain(
-      "filesystem usage at teardown could not be measured",
+    expect(verdict.summary).toBe(
+      "on-change: requesting commit, could not measure usage at teardown",
     );
-    expect(verdict.summary).toContain("verdict: request commit (to be safe)");
   });
 });
 
