@@ -36466,6 +36466,57 @@ function commitIntentFromMode(commitMode) {
 }
 
 
+;// CONCATENATED MODULE: ./src/on-change.ts
+// ext4 metadata operations (journal updates, inode table writes) can move
+// `df` usage by a block even without user-visible file changes, so on-change
+// mode treats a usage delta of up to one filesystem block as "unchanged".
+const ON_CHANGE_THRESHOLD_BYTES = 4096;
+function formatBytes(bytes) {
+    return `${bytes} bytes (${(bytes / (1 << 30)).toFixed(2)} GiB)`;
+}
+const ON_CHANGE_CRITERIA = `commit only if |usage at teardown - usage at mount| > ${ON_CHANGE_THRESHOLD_BYTES} bytes`;
+/**
+ * Decides whether an on-change disk should be committed from the filesystem
+ * usage recorded at mount time (as saved in action state) and the usage
+ * measured right before unmount. Whenever either measurement is unavailable
+ * the disk is committed, since a missed change is worse than a redundant
+ * commit.
+ */
+function evaluateOnChangeCommit(initialUsageBytesStr, fsDiskUsageBytes) {
+    const prefix = `on-change commit check (${ON_CHANGE_CRITERIA}):`;
+    if (!initialUsageBytesStr) {
+        return {
+            commit: true,
+            summary: `${prefix} no filesystem usage was recorded at mount time, so changes cannot be detected -> verdict: commit (to be safe)`,
+        };
+    }
+    const initialUsageBytes = parseInt(initialUsageBytesStr, 10);
+    if (isNaN(initialUsageBytes)) {
+        return {
+            commit: true,
+            summary: `${prefix} filesystem usage recorded at mount time is invalid ("${initialUsageBytesStr}"), so changes cannot be detected -> verdict: commit (to be safe)`,
+        };
+    }
+    if (fsDiskUsageBytes === null) {
+        return {
+            commit: true,
+            summary: `${prefix} usage at mount ${formatBytes(initialUsageBytes)}, usage at teardown could not be measured, so changes cannot be detected -> verdict: commit (to be safe)`,
+        };
+    }
+    const delta = fsDiskUsageBytes - initialUsageBytes;
+    const measurements = `usage at mount ${formatBytes(initialUsageBytes)}, usage at teardown ${formatBytes(fsDiskUsageBytes)}, delta ${delta >= 0 ? "+" : "-"}${Math.abs(delta)} bytes`;
+    if (Math.abs(delta) <= ON_CHANGE_THRESHOLD_BYTES) {
+        return {
+            commit: false,
+            summary: `${prefix} ${measurements} -> verdict: skip commit (delta within ${ON_CHANGE_THRESHOLD_BYTES} byte threshold, filesystem unchanged)`,
+        };
+    }
+    return {
+        commit: true,
+        summary: `${prefix} ${measurements} -> verdict: commit (delta exceeds ${ON_CHANGE_THRESHOLD_BYTES} byte threshold, filesystem changed)`,
+    };
+}
+
 // EXTERNAL MODULE: external "fs"
 var external_fs_ = __nccwpck_require__(9896);
 // EXTERNAL MODULE: external "path"
@@ -36627,6 +36678,7 @@ async function hasAnyStepFailed(runnerBasePath) {
 
 
 
+
 const execAsync = (0,external_util_.promisify)(external_child_process_.exec);
 async function commitStickydisk(exposeId, stickyDiskKey, fsDiskUsageBytes) {
     core.info(`Committing sticky disk ${stickyDiskKey} with expose ID ${exposeId}`);
@@ -36662,8 +36714,8 @@ async function commitStickydisk(exposeId, stickyDiskKey, fsDiskUsageBytes) {
         core.warning(`Error committing sticky disk: ${error instanceof Error ? error.message : String(error)}`);
     }
 }
-async function cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey) {
-    core.info(`Cleaning up sticky disk ${stickyDiskKey} with expose ID ${exposeId}`);
+async function cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey, reason) {
+    core.info(`Not committing sticky disk ${stickyDiskKey} with expose ID ${exposeId}: ${reason}`);
     if (!exposeId || !stickyDiskKey) {
         core.warning("No expose ID or sticky disk key found, cannot report sticky disk to Blacksmith");
         return;
@@ -36758,32 +36810,6 @@ async function flushBlockDevice(devicePath) {
         core.info(`guest flush failed for ${devicePath} after ${duration}ms: ${errorMsg}`);
     }
 }
-function shouldCommitOnChange(fsDiskUsageBytes, initialUsageBytesStr) {
-    if (!initialUsageBytesStr) {
-        core.info("No initial usage recorded, committing to be safe (on-change mode)");
-        return true;
-    }
-    const initialUsageBytes = parseInt(initialUsageBytesStr, 10);
-    if (isNaN(initialUsageBytes)) {
-        core.info("Invalid initial usage value, committing to be safe (on-change mode)");
-        return true;
-    }
-    if (fsDiskUsageBytes === null) {
-        core.info("Could not determine current usage, committing to be safe (on-change mode)");
-        return true;
-    }
-    const delta = Math.abs(fsDiskUsageBytes - initialUsageBytes);
-    // ext4 metadata operations (journal updates, inode table writes) can cause
-    // small usage fluctuations even without user-visible file changes. Use a 4KB
-    // threshold (one filesystem block) to avoid false positives.
-    const thresholdBytes = 4096;
-    if (delta <= thresholdBytes) {
-        core.info(`Filesystem unchanged (initial: ${initialUsageBytes} bytes, current: ${fsDiskUsageBytes} bytes, delta: ${delta} bytes <= ${thresholdBytes} byte threshold). Skipping commit (on-change mode).`);
-        return false;
-    }
-    core.info(`Filesystem changed (initial: ${initialUsageBytes} bytes, current: ${fsDiskUsageBytes} bytes, delta: ${delta} bytes). Committing (on-change mode).`);
-    return true;
-}
 async function run() {
     const stickyDiskPath = (0,core.getState)("STICKYDISK_PATH");
     const exposeId = (0,core.getState)("STICKYDISK_EXPOSE_ID");
@@ -36835,7 +36861,7 @@ async function run() {
             }
             else {
                 fsDiskUsageBytes = parsedValue;
-                core.info(`Filesystem usage: ${fsDiskUsageBytes} bytes (${(fsDiskUsageBytes / (1 << 30)).toFixed(2)} GiB)`);
+                core.info(`Filesystem usage: ${formatBytes(fsDiskUsageBytes)}`);
             }
         }
         catch (error) {
@@ -36870,19 +36896,20 @@ async function run() {
         }
         // Determine whether to commit based on commit mode
         if (commitIntent === stickydisk_pb_CommitIntent.NEVER) {
-            core.info("Commit mode is 'false', skipping sticky disk commit (read-only consumer)");
-            await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey);
+            await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey, "commit mode is 'false' (read-only consumer)");
             return;
         }
         if (commitIntent === stickydisk_pb_CommitIntent.IF_MISSING && wasFormatted !== "true") {
-            core.info("Commit mode is 'if-missing' and a snapshot already existed at mount time (disk was not freshly formatted). Skipping commit.");
-            await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey);
+            await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey, "commit mode is 'if-missing' and a snapshot already existed at mount time (disk was not freshly formatted)");
             return;
         }
-        if (commitIntent === stickydisk_pb_CommitIntent.ON_CHANGE &&
-            !shouldCommitOnChange(fsDiskUsageBytes, initialUsageBytesStr)) {
-            await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey);
-            return;
+        if (commitIntent === stickydisk_pb_CommitIntent.ON_CHANGE) {
+            const verdict = evaluateOnChangeCommit(initialUsageBytesStr, fsDiskUsageBytes);
+            core.info(verdict.summary);
+            if (!verdict.commit) {
+                await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey, "commit mode is 'on-change' and the filesystem did not change");
+                return;
+            }
         }
         // Check for previous step failures before committing
         if (!stickyDiskError) {
@@ -36891,7 +36918,7 @@ async function run() {
             if (failureCheck.error) {
                 core.warning(`Unable to check for previous step failures: ${failureCheck.error}`);
                 core.warning("Skipping sticky disk commit due to ambiguity in failure detection");
-                await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey);
+                await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey, "unable to determine whether previous steps failed");
             }
             else if (failureCheck.hasFailures) {
                 core.warning(`Found ${failureCheck.failedCount} failed/cancelled steps in previous workflow steps`);
@@ -36901,7 +36928,7 @@ async function run() {
                     });
                 }
                 core.warning("Skipping sticky disk commit due to previous step failures");
-                await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey);
+                await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey, `${failureCheck.failedCount} previous step(s) failed or were cancelled`);
             }
             else {
                 // No failures detected
@@ -36911,7 +36938,7 @@ async function run() {
         }
         else {
             core.warning("Skipping sticky disk commit due to sticky disk error during setup");
-            await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey);
+            await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey, "the sticky disk failed during setup");
         }
     }
     catch (error) {

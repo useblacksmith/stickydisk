@@ -5,6 +5,7 @@ import { exec } from "child_process";
 import * as path from "path";
 import { createStickyDiskClient, getAgentEndpoint } from "./utils";
 import { CommitIntent, commitIntentFromMode } from "./commit-intent";
+import { ON_CHANGE_CRITERIA, formatBytes } from "./on-change";
 import {
   getWorkspaceLocalParentToChown,
   normalizeMountPath,
@@ -240,6 +241,7 @@ async function getInitialDiskUsage(
     if (value && !isNaN(parseInt(value, 10))) {
       return value;
     }
+    core.debug(`Invalid initial disk usage value from df: "${value}"`);
   } catch (error) {
     core.debug(
       `Could not get initial disk usage: ${error instanceof Error ? error.message : String(error)}`,
@@ -317,7 +319,13 @@ async function run(): Promise<void> {
     const initialUsage = await getInitialDiskUsage(stickyDiskPath);
     if (initialUsage) {
       saveState("STICKYDISK_INITIAL_USAGE_BYTES", initialUsage);
-      core.debug(`Recorded initial disk usage: ${initialUsage} bytes`);
+      core.info(
+        `on-change commit: filesystem usage at mount is ${formatBytes(parseInt(initialUsage, 10))}; the post step will ${ON_CHANGE_CRITERIA}`,
+      );
+    } else {
+      core.warning(
+        `on-change commit: could not measure filesystem usage at mount, so changes cannot be detected; the post step will commit to be safe`,
+      );
     }
   }
 }
