@@ -33,7 +33,7 @@ describe("evaluateOnChangeCommit", () => {
     expect(verdict.summary).toContain(
       `delta +${ON_CHANGE_THRESHOLD_BYTES + 1} bytes`,
     );
-    expect(verdict.summary).toContain("verdict: commit");
+    expect(verdict.summary).toContain("verdict: request commit");
   });
 
   it("commits when usage shrank past the threshold", () => {
@@ -43,21 +43,21 @@ describe("evaluateOnChangeCommit", () => {
     );
     expect(verdict.commit).toBe(true);
     expect(verdict.summary).toContain(`delta -${1 << 20} bytes`);
-    expect(verdict.summary).toContain("verdict: commit");
+    expect(verdict.summary).toContain("verdict: request commit");
   });
 
   it("commits to be safe when no usage was recorded at mount", () => {
     const verdict = evaluateOnChangeCommit("", initial);
     expect(verdict.commit).toBe(true);
     expect(verdict.summary).toContain("no filesystem usage was recorded");
-    expect(verdict.summary).toContain("verdict: commit (to be safe)");
+    expect(verdict.summary).toContain("verdict: request commit (to be safe)");
   });
 
   it("commits to be safe when the recorded usage is not a number", () => {
     const verdict = evaluateOnChangeCommit("garbage", initial);
     expect(verdict.commit).toBe(true);
     expect(verdict.summary).toContain('invalid ("garbage")');
-    expect(verdict.summary).toContain("verdict: commit (to be safe)");
+    expect(verdict.summary).toContain("verdict: request commit (to be safe)");
   });
 
   it("commits to be safe when usage at teardown could not be measured", () => {
@@ -65,7 +65,7 @@ describe("evaluateOnChangeCommit", () => {
     expect(verdict.commit).toBe(true);
     expect(verdict.summary).toContain(`usage at mount ${formatBytes(initial)}`);
     expect(verdict.summary).toContain("could not be measured");
-    expect(verdict.summary).toContain("verdict: commit (to be safe)");
+    expect(verdict.summary).toContain("verdict: request commit (to be safe)");
   });
 });
 

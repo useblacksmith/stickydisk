@@ -23,7 +23,13 @@ async function getStickyDisk(
   stickyDiskKey: string,
   commitIntent: CommitIntent,
   options?: { signal?: AbortSignal },
-): Promise<{ expose_id: string; device: string }> {
+): Promise<{
+  expose_id: string;
+  device: string;
+  // Non-empty when the host already knows this job's commit will be denied
+  // (e.g. branch protection) and its writes to the sticky disk discarded.
+  commit_early_deny_reason: string;
+}> {
   const client = createStickyDiskClient();
 
   core.debug(`Getting sticky disk for ${stickyDiskKey}`);
@@ -46,6 +52,9 @@ async function getStickyDisk(
   return {
     expose_id: response.exposeId,
     device: response.diskIdentifier,
+    commit_early_deny_reason: response.commitEarlyDeny
+      ? response.commitEarlyDenyReason || "denied by host policy"
+      : "",
   };
 }
 
@@ -183,9 +192,18 @@ async function mountStickyDisk(
   stickyDiskPath: string,
   signal: AbortSignal,
   controller: AbortController,
-): Promise<{ device: string; exposeId: string; wasFormatted: boolean }> {
+): Promise<{
+  device: string;
+  exposeId: string;
+  wasFormatted: boolean;
+  commitEarlyDenyReason: string;
+}> {
   const timeoutId = setTimeout(() => controller.abort(), stickyDiskTimeoutMs);
-  let stickyDiskResponse: { expose_id: string; device: string };
+  let stickyDiskResponse: {
+    expose_id: string;
+    device: string;
+    commit_early_deny_reason: string;
+  };
   try {
     stickyDiskResponse = await getStickyDisk(stickyDiskKey, commitIntent, {
       signal,
@@ -195,6 +213,12 @@ async function mountStickyDisk(
   }
   const device = stickyDiskResponse.device;
   const exposeId = stickyDiskResponse.expose_id;
+  const commitEarlyDenyReason = stickyDiskResponse.commit_early_deny_reason;
+  if (commitEarlyDenyReason !== "") {
+    core.notice(
+      `Sticky disk changes will not be committed for this job (${commitEarlyDenyReason}). The sticky disk is used as-is and any changes to it are discarded.`,
+    );
+  }
   await waitForNonZeroDeviceSize(device, 10000);
   const { wasFormatted } = await maybeFormatBlockDevice(device);
 
@@ -213,7 +237,7 @@ async function mountStickyDisk(
   core.debug(
     `${device} has been mounted to ${stickyDiskPath} with expose ID ${exposeId}`,
   );
-  return { device, exposeId, wasFormatted };
+  return { device, exposeId, wasFormatted, commitEarlyDenyReason };
 }
 
 async function ensureFallbackDirectory(stickyDiskPath: string): Promise<void> {
@@ -255,6 +279,7 @@ async function run(): Promise<void> {
   let exposeId: string | undefined;
   let device = "";
   let wasFormatted = false;
+  let commitEarlyDenyReason = "";
   const stickyDiskKey = getInput("key");
   const stickyDiskPath = normalizeMountPath(getInput("path"));
   const commitMode = getInput("commit") || "true";
@@ -281,15 +306,17 @@ async function run(): Promise<void> {
     const controller = new AbortController();
 
     try {
-      ({ device, exposeId, wasFormatted } = await mountStickyDisk(
-        stickyDiskKey,
-        commitIntent,
-        stickyDiskPath,
-        controller.signal,
-        controller,
-      ));
+      ({ device, exposeId, wasFormatted, commitEarlyDenyReason } =
+        await mountStickyDisk(
+          stickyDiskKey,
+          commitIntent,
+          stickyDiskPath,
+          controller.signal,
+          controller,
+        ));
       saveState("STICKYDISK_EXPOSE_ID", exposeId);
       saveState("STICKYDISK_WAS_FORMATTED", wasFormatted ? "true" : "false");
+      saveState("STICKYDISK_COMMIT_EARLY_DENY_REASON", commitEarlyDenyReason);
       core.debug(
         `Sticky disk mounted to ${device}, expose ID: ${exposeId}, freshly formatted: ${wasFormatted}`,
       );
@@ -314,8 +341,14 @@ async function run(): Promise<void> {
     await ensureFallbackDirectory(stickyDiskPath);
   }
 
-  // Record initial disk usage after mount for on-change detection
-  if (!stickyDiskError && commitIntent === CommitIntent.ON_CHANGE) {
+  // Record initial disk usage after mount for on-change detection. Skipped
+  // when the host already denied the commit: the post step will not commit
+  // regardless of whether the filesystem changed.
+  if (
+    !stickyDiskError &&
+    commitEarlyDenyReason === "" &&
+    commitIntent === CommitIntent.ON_CHANGE
+  ) {
     const initialUsage = await getInitialDiskUsage(stickyDiskPath);
     if (initialUsage) {
       saveState("STICKYDISK_INITIAL_USAGE_BYTES", initialUsage);

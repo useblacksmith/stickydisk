@@ -15,7 +15,7 @@ async function commitStickydisk(
   fsDiskUsageBytes: number | null,
 ): Promise<void> {
   core.info(
-    `Committing sticky disk ${stickyDiskKey} with expose ID ${exposeId}`,
+    `Requesting commit of sticky disk ${stickyDiskKey} with expose ID ${exposeId}`,
   );
   if (!exposeId || !stickyDiskKey) {
     core.warning(
@@ -50,8 +50,10 @@ async function commitStickydisk(
     await client.commitStickyDisk(commitRequest, {
       timeoutMs: 30000,
     });
+    // The host applies the commit at VM teardown, after this step has ended;
+    // this only confirms the request was accepted.
     core.info(
-      `Successfully committed sticky disk ${stickyDiskKey} with expose ID ${exposeId}`,
+      `Sticky disk commit requested for ${stickyDiskKey} with expose ID ${exposeId}; applied at VM shutdown`,
     );
   } catch (error) {
     core.warning(
@@ -197,6 +199,7 @@ async function run(): Promise<void> {
   );
   const initialUsageBytesStr = getState("STICKYDISK_INITIAL_USAGE_BYTES");
   const wasFormatted = getState("STICKYDISK_WAS_FORMATTED");
+  const commitEarlyDenyReason = getState("STICKYDISK_COMMIT_EARLY_DENY_REASON");
   const stickyDiskError = getState("STICKYDISK_ERROR") === "true";
 
   if (!stickyDiskPath) {
@@ -302,6 +305,17 @@ async function run(): Promise<void> {
       return;
     }
 
+    // The host already told us at mount time that this job's writes are
+    // discarded (e.g. branch protection), so there is nothing to decide.
+    if (commitEarlyDenyReason) {
+      await cleanupStickyDiskWithoutCommit(
+        exposeId,
+        stickyDiskKey,
+        `commit denied for this job (${commitEarlyDenyReason}); changes to the sticky disk are discarded`,
+      );
+      return;
+    }
+
     if (commitIntent === CommitIntent.IF_MISSING && wasFormatted !== "true") {
       await cleanupStickyDiskWithoutCommit(
         exposeId,
@@ -367,7 +381,9 @@ async function run(): Promise<void> {
         );
       } else {
         // No failures detected
-        core.info("No previous step failures detected, committing sticky disk");
+        core.info(
+          "No previous step failures detected, requesting sticky disk commit",
+        );
         await commitStickydisk(exposeId, stickyDiskKey, fsDiskUsageBytes);
       }
     } else {

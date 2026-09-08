@@ -7,7 +7,7 @@ export function formatBytes(bytes: number): string {
   return `${bytes} bytes (${(bytes / (1 << 30)).toFixed(2)} GiB)`;
 }
 
-export const ON_CHANGE_CRITERIA = `commit only if |usage at teardown - usage at mount| > ${ON_CHANGE_THRESHOLD_BYTES} bytes`;
+export const ON_CHANGE_CRITERIA = `request a commit only if |usage at teardown - usage at mount| > ${ON_CHANGE_THRESHOLD_BYTES} bytes`;
 
 export interface OnChangeVerdict {
   commit: boolean;
@@ -17,10 +17,10 @@ export interface OnChangeVerdict {
 }
 
 /**
- * Decides whether an on-change disk should be committed from the filesystem
+ * Decides whether a commit should be requested for an on-change disk from the filesystem
  * usage recorded at mount time (as saved in action state) and the usage
  * measured right before unmount. Whenever either measurement is unavailable
- * the disk is committed, since a missed change is worse than a redundant
+ * a commit is requested, since a missed change is worse than a redundant
  * commit.
  */
 export function evaluateOnChangeCommit(
@@ -32,7 +32,7 @@ export function evaluateOnChangeCommit(
   if (!initialUsageBytesStr) {
     return {
       commit: true,
-      summary: `${prefix} no filesystem usage was recorded at mount time, so changes cannot be detected -> verdict: commit (to be safe)`,
+      summary: `${prefix} no filesystem usage was recorded at mount time, so changes cannot be detected -> verdict: request commit (to be safe)`,
     };
   }
 
@@ -40,14 +40,14 @@ export function evaluateOnChangeCommit(
   if (isNaN(initialUsageBytes)) {
     return {
       commit: true,
-      summary: `${prefix} filesystem usage recorded at mount time is invalid ("${initialUsageBytesStr}"), so changes cannot be detected -> verdict: commit (to be safe)`,
+      summary: `${prefix} filesystem usage recorded at mount time is invalid ("${initialUsageBytesStr}"), so changes cannot be detected -> verdict: request commit (to be safe)`,
     };
   }
 
   if (fsDiskUsageBytes === null) {
     return {
       commit: true,
-      summary: `${prefix} usage at mount ${formatBytes(initialUsageBytes)}, usage at teardown could not be measured, so changes cannot be detected -> verdict: commit (to be safe)`,
+      summary: `${prefix} usage at mount ${formatBytes(initialUsageBytes)}, usage at teardown could not be measured, so changes cannot be detected -> verdict: request commit (to be safe)`,
     };
   }
 
@@ -63,6 +63,6 @@ export function evaluateOnChangeCommit(
 
   return {
     commit: true,
-    summary: `${prefix} ${measurements} -> verdict: commit (delta exceeds ${ON_CHANGE_THRESHOLD_BYTES} byte threshold, filesystem changed)`,
+    summary: `${prefix} ${measurements} -> verdict: request commit (delta exceeds ${ON_CHANGE_THRESHOLD_BYTES} byte threshold, filesystem changed)`,
   };
 }
