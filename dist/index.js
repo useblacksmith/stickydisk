@@ -36094,6 +36094,73 @@ const CommitIntent = /*@__PURE__*/ proto3.makeEnum(
 );
 
 /**
+ * @generated from enum stickydisk.v1.BuilderMode
+ */
+const BuilderMode = /*@__PURE__*/ proto3.makeEnum(
+  "stickydisk.v1.BuilderMode",
+  [
+    {no: 0, name: "BUILDER_MODE_UNSPECIFIED", localName: "UNSPECIFIED"},
+    {no: 1, name: "BUILDER_MODE_BLACKSMITH_REMOTE", localName: "BLACKSMITH_REMOTE"},
+    {no: 2, name: "BUILDER_MODE_LOCAL_FALLBACK", localName: "LOCAL_FALLBACK"},
+    {no: 3, name: "BUILDER_MODE_EXISTING", localName: "EXISTING"},
+  ],
+);
+
+/**
+ * @generated from enum stickydisk.v1.BuilderFallbackReason
+ */
+const BuilderFallbackReason = /*@__PURE__*/ proto3.makeEnum(
+  "stickydisk.v1.BuilderFallbackReason",
+  [
+    {no: 0, name: "BUILDER_FALLBACK_REASON_UNSPECIFIED", localName: "UNSPECIFIED"},
+    {no: 1, name: "BUILDER_FALLBACK_REASON_STICKYDISK_SETUP_FAILED", localName: "STICKYDISK_SETUP_FAILED"},
+    {no: 2, name: "BUILDER_FALLBACK_REASON_BUILDKITD_FAILED", localName: "BUILDKITD_FAILED"},
+    {no: 3, name: "BUILDER_FALLBACK_REASON_EXISTING_BUILDER", localName: "EXISTING_BUILDER"},
+  ],
+);
+
+/**
+ * @generated from enum stickydisk.v1.CommitDecision
+ */
+const CommitDecision = /*@__PURE__*/ proto3.makeEnum(
+  "stickydisk.v1.CommitDecision",
+  [
+    {no: 0, name: "COMMIT_DECISION_UNSPECIFIED", localName: "UNSPECIFIED"},
+    {no: 1, name: "COMMIT_DECISION_REQUESTED", localName: "REQUESTED"},
+    {no: 2, name: "COMMIT_DECISION_SKIPPED", localName: "SKIPPED"},
+  ],
+);
+
+/**
+ * @generated from enum stickydisk.v1.CommitSkipReason
+ */
+const CommitSkipReason = /*@__PURE__*/ proto3.makeEnum(
+  "stickydisk.v1.CommitSkipReason",
+  [
+    {no: 0, name: "COMMIT_SKIP_REASON_UNSPECIFIED", localName: "UNSPECIFIED"},
+    {no: 1, name: "COMMIT_SKIP_REASON_STEP_FAILURES", localName: "STEP_FAILURES"},
+    {no: 2, name: "COMMIT_SKIP_REASON_INTEGRITY", localName: "INTEGRITY"},
+    {no: 3, name: "COMMIT_SKIP_REASON_SIGKILL", localName: "SIGKILL"},
+    {no: 4, name: "COMMIT_SKIP_REASON_CLEANUP_ERROR", localName: "CLEANUP_ERROR"},
+    {no: 5, name: "COMMIT_SKIP_REASON_AMBIGUOUS", localName: "AMBIGUOUS"},
+    {no: 6, name: "COMMIT_SKIP_REASON_NO_EXPOSE", localName: "NO_EXPOSE"},
+  ],
+);
+
+/**
+ * @generated from enum stickydisk.v1.IntegrityOutcome
+ */
+const IntegrityOutcome = /*@__PURE__*/ proto3.makeEnum(
+  "stickydisk.v1.IntegrityOutcome",
+  [
+    {no: 0, name: "INTEGRITY_OUTCOME_UNSPECIFIED", localName: "UNSPECIFIED"},
+    {no: 1, name: "INTEGRITY_OUTCOME_PASSED", localName: "PASSED"},
+    {no: 2, name: "INTEGRITY_OUTCOME_FAILED", localName: "FAILED"},
+    {no: 3, name: "INTEGRITY_OUTCOME_SKIPPED", localName: "SKIPPED"},
+  ],
+);
+
+/**
  * @generated from message stickydisk.v1.GetStickyDiskRequest
  */
 const GetStickyDiskRequest = /*@__PURE__*/ proto3.makeMessageType(
@@ -36120,6 +36187,23 @@ const GetStickyDiskResponse = /*@__PURE__*/ proto3.makeMessageType(
     { no: 2, name: "disk_identifier", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 3, name: "parent_snapshot_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 4, name: "clone_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 5, name: "buildkitd_config", kind: "message", T: BuildkitdConfig },
+    { no: 6, name: "commit_early_deny", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 7, name: "commit_early_deny_reason", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ],
+);
+
+/**
+ * BuildkitdConfig carries the backend's buildkitd policy for a docker build
+ * cache disk. The agent forwards it verbatim from the backend; it does not
+ * interpret or validate it.
+ *
+ * @generated from message stickydisk.v1.BuildkitdConfig
+ */
+const BuildkitdConfig = /*@__PURE__*/ proto3.makeMessageType(
+  "stickydisk.v1.BuildkitdConfig",
+  () => [
+    { no: 1, name: "gc_keep_duration_hours", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
   ],
 );
 
@@ -36214,6 +36298,91 @@ const UpResponse = /*@__PURE__*/ proto3.makeMessageType(
   [],
 );
 
+/**
+ * @generated from message stickydisk.v1.ReportDockerBuildRequest
+ */
+const ReportDockerBuildRequest = /*@__PURE__*/ proto3.makeMessageType(
+  "stickydisk.v1.ReportDockerBuildRequest",
+  () => [
+    { no: 1, name: "vm_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "expose_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "builds", kind: "message", T: DockerBuildRecord, repeated: true },
+    { no: 4, name: "runner_step_timeline", kind: "scalar", T: 12 /* ScalarType.BYTES */ },
+    { no: 5, name: "lifecycle", kind: "message", T: DockerJobLifecycle },
+    { no: 6, name: "git_sha", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 7, name: "git_branch", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ],
+);
+
+/**
+ * @generated from message stickydisk.v1.DockerBuildRecord
+ */
+const DockerBuildRecord = /*@__PURE__*/ proto3.makeMessageType(
+  "stickydisk.v1.DockerBuildRecord",
+  () => [
+    { no: 1, name: "history_record", kind: "scalar", T: 12 /* ScalarType.BYTES */ },
+    { no: 2, name: "trace", kind: "scalar", T: 12 /* ScalarType.BYTES */ },
+    { no: 3, name: "incomplete", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 4, name: "truncated", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+  ],
+);
+
+/**
+ * @generated from message stickydisk.v1.CacheMountUsage
+ */
+const CacheMountUsage = /*@__PURE__*/ proto3.makeMessageType(
+  "stickydisk.v1.CacheMountUsage",
+  () => [
+    { no: 1, name: "mount_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 3, name: "records", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+  ],
+);
+
+/**
+ * DockerJobLifecycle is the per-job builder lifecycle summary: the guest-side
+ * decisions and states lower layers cannot see (builder mode, commit
+ * decision, integrity outcome, cache store sizes, disk pressure).
+ *
+ * @generated from message stickydisk.v1.DockerJobLifecycle
+ */
+const DockerJobLifecycle = /*@__PURE__*/ proto3.makeMessageType(
+  "stickydisk.v1.DockerJobLifecycle",
+  () => [
+    { no: 1, name: "builder_mode", kind: "enum", T: proto3.getEnumType(BuilderMode) },
+    { no: 2, name: "fallback_reason", kind: "enum", T: proto3.getEnumType(BuilderFallbackReason) },
+    { no: 3, name: "commit_decision", kind: "enum", T: proto3.getEnumType(CommitDecision) },
+    { no: 4, name: "commit_skip_reason", kind: "enum", T: proto3.getEnumType(CommitSkipReason) },
+    { no: 5, name: "integrity_outcome", kind: "enum", T: proto3.getEnumType(IntegrityOutcome) },
+    { no: 6, name: "integrity_duration_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 7, name: "du_total_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 8, name: "du_cache_mount_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 9, name: "du_layers_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 10, name: "du_source_local_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 11, name: "cache_mounts", kind: "message", T: CacheMountUsage, repeated: true },
+    { no: 12, name: "fs_used_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 13, name: "fs_size_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 14, name: "prune_triggered", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 15, name: "prune_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 16, name: "hotload_duration_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 17, name: "buildkitd_ready_duration_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 18, name: "buildkitd_shutdown_duration_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 19, name: "buildkitd_sigkill_used", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 20, name: "history_export_timed_out", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 21, name: "history_prune_failed", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+  ],
+);
+
+/**
+ * @generated from message stickydisk.v1.ReportDockerBuildResponse
+ */
+const ReportDockerBuildResponse = /*@__PURE__*/ proto3.makeMessageType(
+  "stickydisk.v1.ReportDockerBuildResponse",
+  () => [
+    { no: 1, name: "docker_build_ids", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+  ],
+);
+
 
 ;// CONCATENATED MODULE: ./node_modules/@buf/blacksmith_vm-agent.connectrpc_es/stickydisk/v1/stickydisk_connect.js
 // @generated by protoc-gen-connect-es v1.6.1
@@ -36264,6 +36433,23 @@ const StickyDiskService = {
       name: "ReportMetric",
       I: ReportMetricRequest,
       O: ReportMetricResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * ReportDockerBuild is the structured docker-build teardown report from
+     * setup-docker-builder: raw BuildKit history bytes per build, the raw
+     * runner step timeline, and the job's builder/commit lifecycle facts.
+     * The guest ships only build facts plus the expose_id it got from
+     * GetStickyDisk; all identity (sticky disk key, entity, clone lineage,
+     * installation, region, host, GitHub run/job IDs) is stamped host-side.
+     * The host issues one docker_build_id per shipped build in the response.
+     *
+     * @generated from rpc stickydisk.v1.StickyDiskService.ReportDockerBuild
+     */
+    reportDockerBuild: {
+      name: "ReportDockerBuild",
+      I: ReportDockerBuildRequest,
+      O: ReportDockerBuildResponse,
       kind: MethodKind.Unary,
     },
   }
@@ -36325,6 +36511,73 @@ const stickydisk_pb_CommitIntent = proto3.makeEnum(
 );
 
 /**
+ * @generated from enum stickydisk.v1.BuilderMode
+ */
+const stickydisk_pb_BuilderMode = proto3.makeEnum(
+  "stickydisk.v1.BuilderMode",
+  [
+    {no: 0, name: "BUILDER_MODE_UNSPECIFIED", localName: "UNSPECIFIED"},
+    {no: 1, name: "BUILDER_MODE_BLACKSMITH_REMOTE", localName: "BLACKSMITH_REMOTE"},
+    {no: 2, name: "BUILDER_MODE_LOCAL_FALLBACK", localName: "LOCAL_FALLBACK"},
+    {no: 3, name: "BUILDER_MODE_EXISTING", localName: "EXISTING"},
+  ],
+);
+
+/**
+ * @generated from enum stickydisk.v1.BuilderFallbackReason
+ */
+const stickydisk_pb_BuilderFallbackReason = proto3.makeEnum(
+  "stickydisk.v1.BuilderFallbackReason",
+  [
+    {no: 0, name: "BUILDER_FALLBACK_REASON_UNSPECIFIED", localName: "UNSPECIFIED"},
+    {no: 1, name: "BUILDER_FALLBACK_REASON_STICKYDISK_SETUP_FAILED", localName: "STICKYDISK_SETUP_FAILED"},
+    {no: 2, name: "BUILDER_FALLBACK_REASON_BUILDKITD_FAILED", localName: "BUILDKITD_FAILED"},
+    {no: 3, name: "BUILDER_FALLBACK_REASON_EXISTING_BUILDER", localName: "EXISTING_BUILDER"},
+  ],
+);
+
+/**
+ * @generated from enum stickydisk.v1.CommitDecision
+ */
+const stickydisk_pb_CommitDecision = proto3.makeEnum(
+  "stickydisk.v1.CommitDecision",
+  [
+    {no: 0, name: "COMMIT_DECISION_UNSPECIFIED", localName: "UNSPECIFIED"},
+    {no: 1, name: "COMMIT_DECISION_REQUESTED", localName: "REQUESTED"},
+    {no: 2, name: "COMMIT_DECISION_SKIPPED", localName: "SKIPPED"},
+  ],
+);
+
+/**
+ * @generated from enum stickydisk.v1.CommitSkipReason
+ */
+const stickydisk_pb_CommitSkipReason = proto3.makeEnum(
+  "stickydisk.v1.CommitSkipReason",
+  [
+    {no: 0, name: "COMMIT_SKIP_REASON_UNSPECIFIED", localName: "UNSPECIFIED"},
+    {no: 1, name: "COMMIT_SKIP_REASON_STEP_FAILURES", localName: "STEP_FAILURES"},
+    {no: 2, name: "COMMIT_SKIP_REASON_INTEGRITY", localName: "INTEGRITY"},
+    {no: 3, name: "COMMIT_SKIP_REASON_SIGKILL", localName: "SIGKILL"},
+    {no: 4, name: "COMMIT_SKIP_REASON_CLEANUP_ERROR", localName: "CLEANUP_ERROR"},
+    {no: 5, name: "COMMIT_SKIP_REASON_AMBIGUOUS", localName: "AMBIGUOUS"},
+    {no: 6, name: "COMMIT_SKIP_REASON_NO_EXPOSE", localName: "NO_EXPOSE"},
+  ],
+);
+
+/**
+ * @generated from enum stickydisk.v1.IntegrityOutcome
+ */
+const stickydisk_pb_IntegrityOutcome = proto3.makeEnum(
+  "stickydisk.v1.IntegrityOutcome",
+  [
+    {no: 0, name: "INTEGRITY_OUTCOME_UNSPECIFIED", localName: "UNSPECIFIED"},
+    {no: 1, name: "INTEGRITY_OUTCOME_PASSED", localName: "PASSED"},
+    {no: 2, name: "INTEGRITY_OUTCOME_FAILED", localName: "FAILED"},
+    {no: 3, name: "INTEGRITY_OUTCOME_SKIPPED", localName: "SKIPPED"},
+  ],
+);
+
+/**
  * @generated from message stickydisk.v1.GetStickyDiskRequest
  */
 const stickydisk_pb_GetStickyDiskRequest = proto3.makeMessageType(
@@ -36351,6 +36604,23 @@ const stickydisk_pb_GetStickyDiskResponse = proto3.makeMessageType(
     { no: 2, name: "disk_identifier", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 3, name: "parent_snapshot_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 4, name: "clone_name", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 5, name: "buildkitd_config", kind: "message", T: stickydisk_pb_BuildkitdConfig },
+    { no: 6, name: "commit_early_deny", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 7, name: "commit_early_deny_reason", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ],
+);
+
+/**
+ * BuildkitdConfig carries the backend's buildkitd policy for a docker build
+ * cache disk. The agent forwards it verbatim from the backend; it does not
+ * interpret or validate it.
+ *
+ * @generated from message stickydisk.v1.BuildkitdConfig
+ */
+const stickydisk_pb_BuildkitdConfig = proto3.makeMessageType(
+  "stickydisk.v1.BuildkitdConfig",
+  () => [
+    { no: 1, name: "gc_keep_duration_hours", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
   ],
 );
 
@@ -36445,6 +36715,91 @@ const stickydisk_pb_UpResponse = proto3.makeMessageType(
   [],
 );
 
+/**
+ * @generated from message stickydisk.v1.ReportDockerBuildRequest
+ */
+const stickydisk_pb_ReportDockerBuildRequest = proto3.makeMessageType(
+  "stickydisk.v1.ReportDockerBuildRequest",
+  () => [
+    { no: 1, name: "vm_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "expose_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "builds", kind: "message", T: stickydisk_pb_DockerBuildRecord, repeated: true },
+    { no: 4, name: "runner_step_timeline", kind: "scalar", T: 12 /* ScalarType.BYTES */ },
+    { no: 5, name: "lifecycle", kind: "message", T: stickydisk_pb_DockerJobLifecycle },
+    { no: 6, name: "git_sha", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 7, name: "git_branch", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+  ],
+);
+
+/**
+ * @generated from message stickydisk.v1.DockerBuildRecord
+ */
+const stickydisk_pb_DockerBuildRecord = proto3.makeMessageType(
+  "stickydisk.v1.DockerBuildRecord",
+  () => [
+    { no: 1, name: "history_record", kind: "scalar", T: 12 /* ScalarType.BYTES */ },
+    { no: 2, name: "trace", kind: "scalar", T: 12 /* ScalarType.BYTES */ },
+    { no: 3, name: "incomplete", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 4, name: "truncated", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+  ],
+);
+
+/**
+ * @generated from message stickydisk.v1.CacheMountUsage
+ */
+const stickydisk_pb_CacheMountUsage = proto3.makeMessageType(
+  "stickydisk.v1.CacheMountUsage",
+  () => [
+    { no: 1, name: "mount_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 3, name: "records", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+  ],
+);
+
+/**
+ * DockerJobLifecycle is the per-job builder lifecycle summary: the guest-side
+ * decisions and states lower layers cannot see (builder mode, commit
+ * decision, integrity outcome, cache store sizes, disk pressure).
+ *
+ * @generated from message stickydisk.v1.DockerJobLifecycle
+ */
+const stickydisk_pb_DockerJobLifecycle = proto3.makeMessageType(
+  "stickydisk.v1.DockerJobLifecycle",
+  () => [
+    { no: 1, name: "builder_mode", kind: "enum", T: proto3.getEnumType(stickydisk_pb_BuilderMode) },
+    { no: 2, name: "fallback_reason", kind: "enum", T: proto3.getEnumType(stickydisk_pb_BuilderFallbackReason) },
+    { no: 3, name: "commit_decision", kind: "enum", T: proto3.getEnumType(stickydisk_pb_CommitDecision) },
+    { no: 4, name: "commit_skip_reason", kind: "enum", T: proto3.getEnumType(stickydisk_pb_CommitSkipReason) },
+    { no: 5, name: "integrity_outcome", kind: "enum", T: proto3.getEnumType(stickydisk_pb_IntegrityOutcome) },
+    { no: 6, name: "integrity_duration_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 7, name: "du_total_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 8, name: "du_cache_mount_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 9, name: "du_layers_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 10, name: "du_source_local_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 11, name: "cache_mounts", kind: "message", T: stickydisk_pb_CacheMountUsage, repeated: true },
+    { no: 12, name: "fs_used_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 13, name: "fs_size_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 14, name: "prune_triggered", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 15, name: "prune_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 16, name: "hotload_duration_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 17, name: "buildkitd_ready_duration_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 18, name: "buildkitd_shutdown_duration_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 19, name: "buildkitd_sigkill_used", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 20, name: "history_export_timed_out", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 21, name: "history_prune_failed", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+  ],
+);
+
+/**
+ * @generated from message stickydisk.v1.ReportDockerBuildResponse
+ */
+const stickydisk_pb_ReportDockerBuildResponse = proto3.makeMessageType(
+  "stickydisk.v1.ReportDockerBuildResponse",
+  () => [
+    { no: 1, name: "docker_build_ids", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
+  ],
+);
+
 
 ;// CONCATENATED MODULE: ./src/commit-intent.ts
 
@@ -36467,6 +36822,56 @@ function commitIntentFromMode(commitMode) {
     }
 }
 
+
+;// CONCATENATED MODULE: ./src/on-change.ts
+// ext4 metadata operations (journal updates, inode table writes) can move
+// `df` usage by a block even without user-visible file changes, so on-change
+// mode treats a usage delta of up to one filesystem block as "unchanged".
+const ON_CHANGE_THRESHOLD_BYTES = 4096;
+function formatBytes(bytes) {
+    return `${bytes} bytes (${(bytes / (1 << 30)).toFixed(2)} GiB)`;
+}
+const ON_CHANGE_CRITERIA = `commit is requested only if usage changes by more than ${ON_CHANGE_THRESHOLD_BYTES} bytes`;
+/**
+ * Decides whether a commit should be requested for an on-change disk from the filesystem
+ * usage recorded at mount time (as saved in action state) and the usage
+ * measured right before unmount. Whenever either measurement is unavailable
+ * a commit is requested, since a missed change is worse than a redundant
+ * commit.
+ */
+function evaluateOnChangeCommit(initialUsageBytesStr, fsDiskUsageBytes) {
+    if (!initialUsageBytesStr) {
+        return {
+            commit: true,
+            summary: "on-change: requesting commit, no usage recorded at mount",
+        };
+    }
+    const initialUsageBytes = parseInt(initialUsageBytesStr, 10);
+    if (isNaN(initialUsageBytes)) {
+        return {
+            commit: true,
+            summary: `on-change: requesting commit, usage recorded at mount is invalid ("${initialUsageBytesStr}")`,
+        };
+    }
+    if (fsDiskUsageBytes === null) {
+        return {
+            commit: true,
+            summary: "on-change: requesting commit, could not measure usage at teardown",
+        };
+    }
+    const delta = fsDiskUsageBytes - initialUsageBytes;
+    const change = `usage changed by ${delta >= 0 ? "+" : "-"}${Math.abs(delta)} bytes`;
+    if (Math.abs(delta) <= ON_CHANGE_THRESHOLD_BYTES) {
+        return {
+            commit: false,
+            summary: `on-change: not committing, ${change} (within the ${ON_CHANGE_THRESHOLD_BYTES} byte threshold)`,
+        };
+    }
+    return {
+        commit: true,
+        summary: `on-change: requesting commit, ${change} (over the ${ON_CHANGE_THRESHOLD_BYTES} byte threshold)`,
+    };
+}
 
 // EXTERNAL MODULE: external "os"
 var external_os_ = __nccwpck_require__(857);
@@ -36510,6 +36915,7 @@ function getWorkspaceLocalParentToChown(mountPath, cwd = process.cwd()) {
 
 
 
+
 const execAsync = (0,external_util_.promisify)(external_child_process_.exec);
 // stickyDiskTimeoutMs states the max amount of time this action will wait for the VM agent to
 // expose the sticky disk from the storage agent, map it onto the host and then patch the drive
@@ -36533,6 +36939,9 @@ async function getStickyDisk(stickyDiskKey, commitIntent, options) {
     return {
         expose_id: response.exposeId,
         device: response.diskIdentifier,
+        commit_early_deny_reason: response.commitEarlyDeny
+            ? response.commitEarlyDenyReason || "denied by host policy"
+            : "",
     };
 }
 // The VM agent's sticky-disk response can arrive before the guest kernel has
@@ -36655,6 +37064,10 @@ async function mountStickyDisk(stickyDiskKey, commitIntent, stickyDiskPath, sign
     }
     const device = stickyDiskResponse.device;
     const exposeId = stickyDiskResponse.expose_id;
+    const commitEarlyDenyReason = stickyDiskResponse.commit_early_deny_reason;
+    if (commitEarlyDenyReason !== "") {
+        core.notice(`Sticky disk changes will not be committed for this job (${commitEarlyDenyReason}). The sticky disk is used as-is and any changes to it are discarded.`);
+    }
     await waitForNonZeroDeviceSize(device, 10000);
     const { wasFormatted } = await maybeFormatBlockDevice(device);
     await createMountPoint(stickyDiskPath);
@@ -36665,7 +37078,7 @@ async function mountStickyDisk(stickyDiskKey, commitIntent, stickyDiskPath, sign
     // This is important because the mount operation might change ownership
     await execAsync(`sudo chown $(id -u):$(id -g) ${shellQuote(stickyDiskPath)}`);
     core.debug(`${device} has been mounted to ${stickyDiskPath} with expose ID ${exposeId}`);
-    return { device, exposeId, wasFormatted };
+    return { device, exposeId, wasFormatted, commitEarlyDenyReason };
 }
 async function ensureFallbackDirectory(stickyDiskPath) {
     try {
@@ -36683,6 +37096,7 @@ async function getInitialDiskUsage(stickyDiskPath) {
         if (value && !isNaN(parseInt(value, 10))) {
             return value;
         }
+        core.debug(`Invalid initial disk usage value from df: "${value}"`);
     }
     catch (error) {
         core.debug(`Could not get initial disk usage: ${error instanceof Error ? error.message : String(error)}`);
@@ -36694,6 +37108,7 @@ async function run() {
     let exposeId;
     let device = "";
     let wasFormatted = false;
+    let commitEarlyDenyReason = "";
     const stickyDiskKey = (0,core.getInput)("key");
     const stickyDiskPath = normalizeMountPath((0,core.getInput)("path"));
     const commitMode = (0,core.getInput)("commit") || "true";
@@ -36711,9 +37126,11 @@ async function run() {
     try {
         const controller = new AbortController();
         try {
-            ({ device, exposeId, wasFormatted } = await mountStickyDisk(stickyDiskKey, commitIntent, stickyDiskPath, controller.signal, controller));
+            ({ device, exposeId, wasFormatted, commitEarlyDenyReason } =
+                await mountStickyDisk(stickyDiskKey, commitIntent, stickyDiskPath, controller.signal, controller));
             (0,core.saveState)("STICKYDISK_EXPOSE_ID", exposeId);
             (0,core.saveState)("STICKYDISK_WAS_FORMATTED", wasFormatted ? "true" : "false");
+            (0,core.saveState)("STICKYDISK_COMMIT_EARLY_DENY_REASON", commitEarlyDenyReason);
             core.debug(`Sticky disk mounted to ${device}, expose ID: ${exposeId}, freshly formatted: ${wasFormatted}`);
         }
         catch (error) {
@@ -36736,12 +37153,20 @@ async function run() {
         // sticky disk (a cache miss) rather than failing on a missing path.
         await ensureFallbackDirectory(stickyDiskPath);
     }
-    // Record initial disk usage after mount for on-change detection
-    if (!stickyDiskError && commitIntent === stickydisk_pb_CommitIntent.ON_CHANGE) {
+    // Record initial disk usage after mount for on-change detection. Skipped
+    // when the host already denied the commit: the post step will not commit
+    // regardless of whether the filesystem changed.
+    if (!stickyDiskError &&
+        commitEarlyDenyReason === "" &&
+        commitIntent === stickydisk_pb_CommitIntent.ON_CHANGE) {
         const initialUsage = await getInitialDiskUsage(stickyDiskPath);
         if (initialUsage) {
             (0,core.saveState)("STICKYDISK_INITIAL_USAGE_BYTES", initialUsage);
-            core.debug(`Recorded initial disk usage: ${initialUsage} bytes`);
+            core.info(`on-change: ${ON_CHANGE_CRITERIA}`);
+            core.debug(`on-change: usage at mount is ${formatBytes(parseInt(initialUsage, 10))}`);
+        }
+        else {
+            core.warning(`on-change: could not measure usage at mount; the post step will request a commit`);
         }
     }
 }
