@@ -37024,7 +37024,83 @@ async function hasAnyStepFailed(runnerBasePath) {
     return result.hasFailures;
 }
 
+;// CONCATENATED MODULE: ./src/mount-report.ts
+
+
+// The guest-side view of one sticky disk use, posted once from the post step
+// to the Blacksmith agent's /internal endpoint. The agent joins it onto the
+// host's lifecycle record for the same expose id; reporting is best-effort and
+// never affects the job.
+const MOUNT_REPORT_METRIC_TYPE = "stickydisk_mount_report";
+// Resolves the /internal endpoint from the environment; undefined when the
+// runner has no metrics endpoint (nothing is sent).
+function mountReportTargetFromEnv(env = process.env) {
+    const agentAddr = env.BLACKSMITH_AGENT_ADDR;
+    const metricsPort = parseInt(env.BLACKSMITH_METRICS_HTTP_PORT || "", 10);
+    if (!agentAddr || isNaN(metricsPort) || metricsPort <= 0) {
+        return undefined;
+    }
+    return { agentAddr, metricsPort, vmId: env.BLACKSMITH_VM_ID || "" };
+}
+function encodeMountReport(report, vmId) {
+    return JSON.stringify({
+        metric_type: MOUNT_REPORT_METRIC_TYPE,
+        value: 1,
+        vm_id: vmId,
+        attributes: {},
+        payload: report,
+    });
+}
+const MOUNT_REPORT_TIMEOUT_MS = 3000;
+// Posts the report and swallows every failure: a missing endpoint, a refused
+// connection or a slow agent only cost a debug line.
+async function sendMountReport(report, target = mountReportTargetFromEnv(), timeoutMs = MOUNT_REPORT_TIMEOUT_MS) {
+    if (!target) {
+        core.debug("[metrics] BLACKSMITH_AGENT_ADDR or BLACKSMITH_METRICS_HTTP_PORT not set, skipping mount report");
+        return false;
+    }
+    const body = encodeMountReport(report, target.vmId);
+    try {
+        await new Promise((resolve, reject) => {
+            const req = external_http_.request({
+                hostname: target.agentAddr,
+                port: target.metricsPort,
+                path: "/internal",
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Content-Length": Buffer.byteLength(body),
+                },
+                timeout: timeoutMs,
+            }, (res) => {
+                res.resume();
+                res.on("end", () => resolve());
+            });
+            req.on("error", reject);
+            req.on("timeout", () => {
+                req.destroy();
+                reject(new Error("mount report request timed out"));
+            });
+            req.write(body);
+            req.end();
+        });
+        core.debug(`[metrics] Reported sticky disk mount (setup=${report.setup_outcome}, skip=${report.skip_reason || "none"})`);
+        return true;
+    }
+    catch (error) {
+        core.debug(`[metrics] Failed to report sticky disk mount: ${error instanceof Error ? error.message : String(error)}`);
+        return false;
+    }
+}
+// Parses a millisecond duration saved to GitHub Actions state; absent or
+// malformed values report as 0.
+function parseStateMs(value) {
+    const ms = parseInt(value, 10);
+    return isNaN(ms) || ms < 0 ? 0 : ms;
+}
+
 ;// CONCATENATED MODULE: ./src/post.ts
+
 
 
 
@@ -37179,6 +37255,19 @@ async function run() {
         core.debug("No STICKYDISK_PATH in state, skipping unmount");
         return;
     }
+    const report = {
+        expose_id: exposeId,
+        sticky_disk_key: stickyDiskKey,
+        setup_outcome: stickyDiskError ? "setup_fallback" : "mounted",
+        skip_reason: "",
+        was_formatted: wasFormatted === "true",
+        format_ms: parseStateMs((0,core.getState)("STICKYDISK_FORMAT_MS")),
+        mount_ms: parseStateMs((0,core.getState)("STICKYDISK_MOUNT_MS")),
+        unmount_ms: 0,
+    };
+    const skip = (reason) => {
+        report.skip_reason = reason;
+    };
     const logNotMounted = () => {
         if (stickyDiskError) {
             core.info(`Skipping unmount and commit for ${stickyDiskPath}: the sticky disk mount failed during setup, so there is nothing to unmount and committing could clobber existing cached data`);
@@ -37194,6 +37283,7 @@ async function run() {
             const { stdout: mountOutput } = await execAsync(`mount | grep "${stickyDiskPath}"`);
             if (!mountOutput) {
                 logNotMounted();
+                skip(stickyDiskError ? "setup_error" : "not_mounted");
                 return;
             }
             devicePath = await getDeviceFromMount(stickyDiskPath);
@@ -37204,6 +37294,7 @@ async function run() {
         catch {
             // grep returns non-zero if no match found
             logNotMounted();
+            skip(stickyDiskError ? "setup_error" : "not_mounted");
             return;
         }
         // Ensure all pending writes are flushed to disk before collecting usage.
@@ -37229,6 +37320,7 @@ async function run() {
         // This helps prevent "device is busy" errors during unmount
         await execAsync("sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'");
         // Unmount with retries.
+        const unmountStart = Date.now();
         for (let attempt = 1; attempt <= 10; attempt++) {
             try {
                 await execAsync(`sudo umount "${stickyDiskPath}"`);
@@ -37243,6 +37335,7 @@ async function run() {
                 await new Promise((resolve) => setTimeout(resolve, 300));
             }
         }
+        report.unmount_ms = Date.now() - unmountStart;
         // Flush block device buffers after unmount to ensure data durability
         // before the Ceph RBD snapshot is taken. The device is still mapped even though unmounted.
         if (devicePath) {
@@ -37253,16 +37346,19 @@ async function run() {
         }
         // Determine whether to commit based on commit mode
         if (commitIntent === stickydisk_pb_CommitIntent.NEVER) {
+            skip("commit_false");
             await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey, "commit mode is 'false' (read-only consumer)");
             return;
         }
         // The host already told us at mount time that this job's writes are
         // discarded (e.g. branch protection), so there is nothing to decide.
         if (commitEarlyDenyReason) {
+            skip("early_deny");
             await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey, `commit denied for this job (${commitEarlyDenyReason}); changes to the sticky disk are discarded`);
             return;
         }
         if (commitIntent === stickydisk_pb_CommitIntent.IF_MISSING && wasFormatted !== "true") {
+            skip("if_missing_existing");
             await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey, "commit mode is 'if-missing' and a snapshot already existed at mount time (disk was not freshly formatted)");
             return;
         }
@@ -37270,6 +37366,7 @@ async function run() {
             const verdict = evaluateOnChangeCommit(initialUsageBytesStr, fsDiskUsageBytes);
             core.info(verdict.summary);
             if (!verdict.commit) {
+                skip("on_change_unchanged");
                 await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey, "commit mode is 'on-change' and the filesystem did not change");
                 return;
             }
@@ -37281,6 +37378,7 @@ async function run() {
             if (failureCheck.error) {
                 core.warning(`Unable to check for previous step failures: ${failureCheck.error}`);
                 core.warning("Skipping sticky disk commit due to ambiguity in failure detection");
+                skip("step_check_error");
                 await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey, "unable to determine whether previous steps failed");
             }
             else if (failureCheck.hasFailures) {
@@ -37291,6 +37389,7 @@ async function run() {
                     });
                 }
                 core.warning("Skipping sticky disk commit due to previous step failures");
+                skip("prior_step_failure");
                 await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey, `${failureCheck.failedCount} previous step(s) failed or were cancelled`);
             }
             else {
@@ -37301,13 +37400,18 @@ async function run() {
         }
         else {
             core.warning("Skipping sticky disk commit due to sticky disk error during setup");
+            skip("setup_error");
             await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey, "the sticky disk failed during setup");
         }
     }
     catch (error) {
+        skip("post_error");
         if (error instanceof Error) {
             core.warning(`Failed to cleanup and commit sticky disk at ${stickyDiskPath}: ${error}`);
         }
+    }
+    finally {
+        await sendMountReport(report);
     }
 }
 run();

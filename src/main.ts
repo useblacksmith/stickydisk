@@ -186,12 +186,20 @@ async function createMountPoint(stickyDiskPath: string): Promise<void> {
   }
 }
 
+// Guest-side setup timings, filled in as each phase completes so a failure
+// midway still reports the phases that ran.
+interface SetupTimings {
+  formatMs: number;
+  mountMs: number;
+}
+
 async function mountStickyDisk(
   stickyDiskKey: string,
   commitIntent: CommitIntent,
   stickyDiskPath: string,
   signal: AbortSignal,
   controller: AbortController,
+  timings: SetupTimings,
 ): Promise<{
   device: string;
   exposeId: string;
@@ -213,6 +221,9 @@ async function mountStickyDisk(
   }
   const device = stickyDiskResponse.device;
   const exposeId = stickyDiskResponse.expose_id;
+  // Saved before format/mount so the post step can report a guest-side
+  // failure against the disk the host exposed.
+  saveState("STICKYDISK_EXPOSE_ID", exposeId);
   const commitEarlyDenyReason = stickyDiskResponse.commit_early_deny_reason;
   if (commitEarlyDenyReason !== "") {
     core.notice(
@@ -220,10 +231,13 @@ async function mountStickyDisk(
     );
   }
   await waitForNonZeroDeviceSize(device, 10000);
+  const formatStart = Date.now();
   const { wasFormatted } = await maybeFormatBlockDevice(device);
+  timings.formatMs = Date.now() - formatStart;
 
   await createMountPoint(stickyDiskPath);
 
+  const mountStart = Date.now();
   // noinit_itable stops the background zeroing of a non-trivial portion of
   // the device (uninitialized inode tables), which is unnecessary here.
   await execAsync(
@@ -233,6 +247,7 @@ async function mountStickyDisk(
   // After mounting, ensure the mounted filesystem is owned by runner user
   // This is important because the mount operation might change ownership
   await execAsync(`sudo chown $(id -u):$(id -g) ${shellQuote(stickyDiskPath)}`);
+  timings.mountMs = Date.now() - mountStart;
 
   core.debug(
     `${device} has been mounted to ${stickyDiskPath} with expose ID ${exposeId}`,
@@ -280,6 +295,7 @@ async function run(): Promise<void> {
   let device = "";
   let wasFormatted = false;
   let commitEarlyDenyReason = "";
+  const timings: SetupTimings = { formatMs: 0, mountMs: 0 };
   const stickyDiskKey = getInput("key");
   const stickyDiskPath = normalizeMountPath(getInput("path"));
   const commitMode = getInput("commit") || "true";
@@ -313,8 +329,8 @@ async function run(): Promise<void> {
           stickyDiskPath,
           controller.signal,
           controller,
+          timings,
         ));
-      saveState("STICKYDISK_EXPOSE_ID", exposeId);
       saveState("STICKYDISK_WAS_FORMATTED", wasFormatted ? "true" : "false");
       saveState("STICKYDISK_COMMIT_EARLY_DENY_REASON", commitEarlyDenyReason);
       core.debug(
@@ -332,6 +348,9 @@ async function run(): Promise<void> {
       saveState("STICKYDISK_ERROR", "true");
     }
   }
+
+  saveState("STICKYDISK_FORMAT_MS", String(timings.formatMs));
+  saveState("STICKYDISK_MOUNT_MS", String(timings.mountMs));
 
   if (stickyDiskError) {
     core.warning(`Error getting sticky disk: ${stickyDiskError}`);
