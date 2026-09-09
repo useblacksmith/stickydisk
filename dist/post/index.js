@@ -37051,9 +37051,12 @@ function encodeMountReport(report, vmId) {
         payload: report,
     });
 }
-const MOUNT_REPORT_TIMEOUT_MS = 3000;
+// The agent listens on the VM's local network, so a healthy round trip is
+// milliseconds; the post step is on the job's critical path, so a stalled agent
+// is abandoned quickly.
+const MOUNT_REPORT_TIMEOUT_MS = 1500;
 // Posts the report and swallows every failure: a missing endpoint, a refused
-// connection or a slow agent only cost a debug line.
+// connection, a non-2xx response or a slow agent only cost a debug line.
 async function sendMountReport(report, target = mountReportTargetFromEnv(), timeoutMs = MOUNT_REPORT_TIMEOUT_MS) {
     if (!target) {
         core.debug("[metrics] BLACKSMITH_AGENT_ADDR or BLACKSMITH_METRICS_HTTP_PORT not set, skipping mount report");
@@ -37073,8 +37076,17 @@ async function sendMountReport(report, target = mountReportTargetFromEnv(), time
                 },
                 timeout: timeoutMs,
             }, (res) => {
+                var _a;
+                const status = (_a = res.statusCode) !== null && _a !== void 0 ? _a : 0;
                 res.resume();
-                res.on("end", () => resolve());
+                res.on("end", () => {
+                    if (status >= 200 && status < 300) {
+                        resolve();
+                    }
+                    else {
+                        reject(new Error(`agent responded with HTTP ${status}`));
+                    }
+                });
             });
             req.on("error", reject);
             req.on("timeout", () => {
