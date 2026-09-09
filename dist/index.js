@@ -37051,7 +37051,7 @@ async function createMountPoint(stickyDiskPath) {
         await execAsync(`sudo chown $(id -u):$(id -g) ${shellQuote(workspaceParentPath)}`);
     }
 }
-async function mountStickyDisk(stickyDiskKey, commitIntent, stickyDiskPath, signal, controller) {
+async function mountStickyDisk(stickyDiskKey, commitIntent, stickyDiskPath, signal, controller, timings) {
     const timeoutId = setTimeout(() => controller.abort(), stickyDiskTimeoutMs);
     let stickyDiskResponse;
     try {
@@ -37064,19 +37064,26 @@ async function mountStickyDisk(stickyDiskKey, commitIntent, stickyDiskPath, sign
     }
     const device = stickyDiskResponse.device;
     const exposeId = stickyDiskResponse.expose_id;
+    // Saved before format/mount so the post step can report a guest-side
+    // failure against the disk the host exposed.
+    (0,core.saveState)("STICKYDISK_EXPOSE_ID", exposeId);
     const commitEarlyDenyReason = stickyDiskResponse.commit_early_deny_reason;
     if (commitEarlyDenyReason !== "") {
         core.notice(`Sticky disk changes will not be committed for this job (${commitEarlyDenyReason}). The sticky disk is used as-is and any changes to it are discarded.`);
     }
     await waitForNonZeroDeviceSize(device, 10000);
+    const formatStart = Date.now();
     const { wasFormatted } = await maybeFormatBlockDevice(device);
+    timings.formatMs = Date.now() - formatStart;
     await createMountPoint(stickyDiskPath);
+    const mountStart = Date.now();
     // noinit_itable stops the background zeroing of a non-trivial portion of
     // the device (uninitialized inode tables), which is unnecessary here.
     await execAsync(`sudo mount -o noinit_itable ${shellQuote(device)} ${shellQuote(stickyDiskPath)}`);
     // After mounting, ensure the mounted filesystem is owned by runner user
     // This is important because the mount operation might change ownership
     await execAsync(`sudo chown $(id -u):$(id -g) ${shellQuote(stickyDiskPath)}`);
+    timings.mountMs = Date.now() - mountStart;
     core.debug(`${device} has been mounted to ${stickyDiskPath} with expose ID ${exposeId}`);
     return { device, exposeId, wasFormatted, commitEarlyDenyReason };
 }
@@ -37109,6 +37116,7 @@ async function run() {
     let device = "";
     let wasFormatted = false;
     let commitEarlyDenyReason = "";
+    const timings = { formatMs: 0, mountMs: 0 };
     const stickyDiskKey = (0,core.getInput)("key");
     const stickyDiskPath = normalizeMountPath((0,core.getInput)("path"));
     const commitMode = (0,core.getInput)("commit") || "true";
@@ -37127,8 +37135,7 @@ async function run() {
         const controller = new AbortController();
         try {
             ({ device, exposeId, wasFormatted, commitEarlyDenyReason } =
-                await mountStickyDisk(stickyDiskKey, commitIntent, stickyDiskPath, controller.signal, controller));
-            (0,core.saveState)("STICKYDISK_EXPOSE_ID", exposeId);
+                await mountStickyDisk(stickyDiskKey, commitIntent, stickyDiskPath, controller.signal, controller, timings));
             (0,core.saveState)("STICKYDISK_WAS_FORMATTED", wasFormatted ? "true" : "false");
             (0,core.saveState)("STICKYDISK_COMMIT_EARLY_DENY_REASON", commitEarlyDenyReason);
             core.debug(`Sticky disk mounted to ${device}, expose ID: ${exposeId}, freshly formatted: ${wasFormatted}`);
@@ -37146,6 +37153,8 @@ async function run() {
             (0,core.saveState)("STICKYDISK_ERROR", "true");
         }
     }
+    (0,core.saveState)("STICKYDISK_FORMAT_MS", String(timings.formatMs));
+    (0,core.saveState)("STICKYDISK_MOUNT_MS", String(timings.mountMs));
     if (stickyDiskError) {
         core.warning(`Error getting sticky disk: ${stickyDiskError}`);
         // Degrade gracefully: make sure the requested path exists as an empty,
