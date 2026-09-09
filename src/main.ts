@@ -234,6 +234,9 @@ async function mountStickyDisk(
   const formatStart = Date.now();
   const { wasFormatted } = await maybeFormatBlockDevice(device);
   timings.formatMs = Date.now() - formatStart;
+  // Saved as soon as the format decision is made so the post report still
+  // carries it if the mount below fails.
+  saveState("STICKYDISK_WAS_FORMATTED", wasFormatted ? "true" : "false");
 
   await createMountPoint(stickyDiskPath);
 
@@ -331,7 +334,6 @@ async function run(): Promise<void> {
           controller,
           timings,
         ));
-      saveState("STICKYDISK_WAS_FORMATTED", wasFormatted ? "true" : "false");
       saveState("STICKYDISK_COMMIT_EARLY_DENY_REASON", commitEarlyDenyReason);
       core.debug(
         `Sticky disk mounted to ${device}, expose ID: ${exposeId}, freshly formatted: ${wasFormatted}`,

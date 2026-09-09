@@ -37075,6 +37075,9 @@ async function mountStickyDisk(stickyDiskKey, commitIntent, stickyDiskPath, sign
     const formatStart = Date.now();
     const { wasFormatted } = await maybeFormatBlockDevice(device);
     timings.formatMs = Date.now() - formatStart;
+    // Saved as soon as the format decision is made so the post report still
+    // carries it if the mount below fails.
+    (0,core.saveState)("STICKYDISK_WAS_FORMATTED", wasFormatted ? "true" : "false");
     await createMountPoint(stickyDiskPath);
     const mountStart = Date.now();
     // noinit_itable stops the background zeroing of a non-trivial portion of
@@ -37136,7 +37139,6 @@ async function run() {
         try {
             ({ device, exposeId, wasFormatted, commitEarlyDenyReason } =
                 await mountStickyDisk(stickyDiskKey, commitIntent, stickyDiskPath, controller.signal, controller, timings));
-            (0,core.saveState)("STICKYDISK_WAS_FORMATTED", wasFormatted ? "true" : "false");
             (0,core.saveState)("STICKYDISK_COMMIT_EARLY_DENY_REASON", commitEarlyDenyReason);
             core.debug(`Sticky disk mounted to ${device}, expose ID: ${exposeId}, freshly formatted: ${wasFormatted}`);
         }
