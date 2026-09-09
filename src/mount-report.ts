@@ -62,10 +62,13 @@ export function encodeMountReport(report: MountReport, vmId: string): string {
   });
 }
 
-export const MOUNT_REPORT_TIMEOUT_MS = 3000;
+// The agent listens on the VM's local network, so a healthy round trip is
+// milliseconds; the post step is on the job's critical path, so a stalled agent
+// is abandoned quickly.
+export const MOUNT_REPORT_TIMEOUT_MS = 1500;
 
 // Posts the report and swallows every failure: a missing endpoint, a refused
-// connection or a slow agent only cost a debug line.
+// connection, a non-2xx response or a slow agent only cost a debug line.
 export async function sendMountReport(
   report: MountReport,
   target: MountReportTarget | undefined = mountReportTargetFromEnv(),
@@ -94,8 +97,15 @@ export async function sendMountReport(
           timeout: timeoutMs,
         },
         (res) => {
+          const status = res.statusCode ?? 0;
           res.resume();
-          res.on("end", () => resolve());
+          res.on("end", () => {
+            if (status >= 200 && status < 300) {
+              resolve();
+            } else {
+              reject(new Error(`agent responded with HTTP ${status}`));
+            }
+          });
         },
       );
       req.on("error", reject);

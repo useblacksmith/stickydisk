@@ -132,6 +132,24 @@ describe("sendMountReport", () => {
     );
   });
 
+  it("treats a non-2xx response as a failed send", async () => {
+    const { server, port } = await listen((req, res) => {
+      req.resume();
+      req.on("end", () => res.writeHead(500).end("boom"));
+    });
+    try {
+      await expect(
+        sendMountReport(report, {
+          agentAddr: "127.0.0.1",
+          metricsPort: port,
+          vmId: "vm-1",
+        }),
+      ).resolves.toBe(false);
+    } finally {
+      await close(server);
+    }
+  });
+
   it("does nothing without a target", async () => {
     await expect(sendMountReport(report, undefined)).resolves.toBe(false);
   });
