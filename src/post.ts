@@ -292,22 +292,26 @@ async function run(): Promise<void> {
     // This helps prevent "device is busy" errors during unmount
     await execAsync("sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'");
 
-    // Unmount with retries.
+    // Unmount with retries; the duration covers the retries and is kept
+    // when the last attempt fails.
     const unmountStart = Date.now();
-    for (let attempt = 1; attempt <= 10; attempt++) {
-      try {
-        await execAsync(`sudo umount "${stickyDiskPath}"`);
-        core.info(`Successfully unmounted ${stickyDiskPath}`);
-        break;
-      } catch (error) {
-        if (attempt === 10) {
-          throw error;
+    try {
+      for (let attempt = 1; attempt <= 10; attempt++) {
+        try {
+          await execAsync(`sudo umount "${stickyDiskPath}"`);
+          core.info(`Successfully unmounted ${stickyDiskPath}`);
+          break;
+        } catch (error) {
+          if (attempt === 10) {
+            throw error;
+          }
+          core.warning(`Unmount failed, retrying (${attempt}/10)...`);
+          await new Promise((resolve) => setTimeout(resolve, 300));
         }
-        core.warning(`Unmount failed, retrying (${attempt}/10)...`);
-        await new Promise((resolve) => setTimeout(resolve, 300));
       }
+    } finally {
+      report.unmount_ms = Date.now() - unmountStart;
     }
-    report.unmount_ms = Date.now() - unmountStart;
 
     // Flush block device buffers after unmount to ensure data durability
     // before the Ceph RBD snapshot is taken. The device is still mapped even though unmounted.
