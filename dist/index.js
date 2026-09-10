@@ -37072,21 +37072,32 @@ async function mountStickyDisk(stickyDiskKey, commitIntent, stickyDiskPath, sign
         core.notice(`Sticky disk changes will not be committed for this job (${commitEarlyDenyReason}). The sticky disk is used as-is and any changes to it are discarded.`);
     }
     await waitForNonZeroDeviceSize(device, 10000);
+    // Phase durations are recorded in finally so a phase that fails still
+    // reports the time it spent.
+    let wasFormatted;
     const formatStart = Date.now();
-    const { wasFormatted } = await maybeFormatBlockDevice(device);
-    timings.formatMs = Date.now() - formatStart;
+    try {
+        ({ wasFormatted } = await maybeFormatBlockDevice(device));
+    }
+    finally {
+        timings.formatMs = Date.now() - formatStart;
+    }
     // Saved as soon as the format decision is made so the post report still
     // carries it if the mount below fails.
     (0,core.saveState)("STICKYDISK_WAS_FORMATTED", wasFormatted ? "true" : "false");
     await createMountPoint(stickyDiskPath);
     const mountStart = Date.now();
-    // noinit_itable stops the background zeroing of a non-trivial portion of
-    // the device (uninitialized inode tables), which is unnecessary here.
-    await execAsync(`sudo mount -o noinit_itable ${shellQuote(device)} ${shellQuote(stickyDiskPath)}`);
-    // After mounting, ensure the mounted filesystem is owned by runner user
-    // This is important because the mount operation might change ownership
-    await execAsync(`sudo chown $(id -u):$(id -g) ${shellQuote(stickyDiskPath)}`);
-    timings.mountMs = Date.now() - mountStart;
+    try {
+        // noinit_itable stops the background zeroing of a non-trivial portion of
+        // the device (uninitialized inode tables), which is unnecessary here.
+        await execAsync(`sudo mount -o noinit_itable ${shellQuote(device)} ${shellQuote(stickyDiskPath)}`);
+        // After mounting, ensure the mounted filesystem is owned by runner user
+        // This is important because the mount operation might change ownership
+        await execAsync(`sudo chown $(id -u):$(id -g) ${shellQuote(stickyDiskPath)}`);
+    }
+    finally {
+        timings.mountMs = Date.now() - mountStart;
+    }
     core.debug(`${device} has been mounted to ${stickyDiskPath} with expose ID ${exposeId}`);
     return { device, exposeId, wasFormatted, commitEarlyDenyReason };
 }
