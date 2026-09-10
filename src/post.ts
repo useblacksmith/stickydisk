@@ -6,6 +6,12 @@ import { createStickyDiskClient } from "./utils";
 import { CommitIntent, commitIntentFromMode } from "./commit-intent";
 import { evaluateOnChangeCommit, formatBytes } from "./on-change";
 import { checkPreviousStepFailures } from "./step-checker";
+import {
+  MountReport,
+  SkipReason,
+  parseStateMs,
+  sendMountReport,
+} from "./mount-report";
 
 const execAsync = promisify(exec);
 
@@ -207,6 +213,20 @@ async function run(): Promise<void> {
     return;
   }
 
+  const report: MountReport = {
+    expose_id: exposeId,
+    sticky_disk_key: stickyDiskKey,
+    setup_outcome: stickyDiskError ? "setup_fallback" : "mounted",
+    skip_reason: "",
+    was_formatted: wasFormatted === "true",
+    format_ms: parseStateMs(getState("STICKYDISK_FORMAT_MS")),
+    mount_ms: parseStateMs(getState("STICKYDISK_MOUNT_MS")),
+    unmount_ms: 0,
+  };
+  const skip = (reason: SkipReason): void => {
+    report.skip_reason = reason;
+  };
+
   const logNotMounted = (): void => {
     if (stickyDiskError) {
       core.info(
@@ -226,6 +246,7 @@ async function run(): Promise<void> {
       );
       if (!mountOutput) {
         logNotMounted();
+        skip(stickyDiskError ? "setup_error" : "not_mounted");
         return;
       }
       devicePath = await getDeviceFromMount(stickyDiskPath);
@@ -237,6 +258,7 @@ async function run(): Promise<void> {
     } catch {
       // grep returns non-zero if no match found
       logNotMounted();
+      skip(stickyDiskError ? "setup_error" : "not_mounted");
       return;
     }
 
@@ -270,19 +292,25 @@ async function run(): Promise<void> {
     // This helps prevent "device is busy" errors during unmount
     await execAsync("sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'");
 
-    // Unmount with retries.
-    for (let attempt = 1; attempt <= 10; attempt++) {
-      try {
-        await execAsync(`sudo umount "${stickyDiskPath}"`);
-        core.info(`Successfully unmounted ${stickyDiskPath}`);
-        break;
-      } catch (error) {
-        if (attempt === 10) {
-          throw error;
+    // Unmount with retries; the duration covers the retries and is kept
+    // when the last attempt fails.
+    const unmountStart = Date.now();
+    try {
+      for (let attempt = 1; attempt <= 10; attempt++) {
+        try {
+          await execAsync(`sudo umount "${stickyDiskPath}"`);
+          core.info(`Successfully unmounted ${stickyDiskPath}`);
+          break;
+        } catch (error) {
+          if (attempt === 10) {
+            throw error;
+          }
+          core.warning(`Unmount failed, retrying (${attempt}/10)...`);
+          await new Promise((resolve) => setTimeout(resolve, 300));
         }
-        core.warning(`Unmount failed, retrying (${attempt}/10)...`);
-        await new Promise((resolve) => setTimeout(resolve, 300));
       }
+    } finally {
+      report.unmount_ms = Date.now() - unmountStart;
     }
 
     // Flush block device buffers after unmount to ensure data durability
@@ -297,6 +325,7 @@ async function run(): Promise<void> {
 
     // Determine whether to commit based on commit mode
     if (commitIntent === CommitIntent.NEVER) {
+      skip("commit_false");
       await cleanupStickyDiskWithoutCommit(
         exposeId,
         stickyDiskKey,
@@ -308,6 +337,7 @@ async function run(): Promise<void> {
     // The host already told us at mount time that this job's writes are
     // discarded (e.g. branch protection), so there is nothing to decide.
     if (commitEarlyDenyReason) {
+      skip("early_deny");
       await cleanupStickyDiskWithoutCommit(
         exposeId,
         stickyDiskKey,
@@ -317,6 +347,7 @@ async function run(): Promise<void> {
     }
 
     if (commitIntent === CommitIntent.IF_MISSING && wasFormatted !== "true") {
+      skip("if_missing_existing");
       await cleanupStickyDiskWithoutCommit(
         exposeId,
         stickyDiskKey,
@@ -332,6 +363,7 @@ async function run(): Promise<void> {
       );
       core.info(verdict.summary);
       if (!verdict.commit) {
+        skip("on_change_unchanged");
         await cleanupStickyDiskWithoutCommit(
           exposeId,
           stickyDiskKey,
@@ -355,6 +387,7 @@ async function run(): Promise<void> {
         core.warning(
           "Skipping sticky disk commit due to ambiguity in failure detection",
         );
+        skip("step_check_error");
         await cleanupStickyDiskWithoutCommit(
           exposeId,
           stickyDiskKey,
@@ -374,6 +407,7 @@ async function run(): Promise<void> {
         core.warning(
           "Skipping sticky disk commit due to previous step failures",
         );
+        skip("prior_step_failure");
         await cleanupStickyDiskWithoutCommit(
           exposeId,
           stickyDiskKey,
@@ -390,6 +424,7 @@ async function run(): Promise<void> {
       core.warning(
         "Skipping sticky disk commit due to sticky disk error during setup",
       );
+      skip("setup_error");
       await cleanupStickyDiskWithoutCommit(
         exposeId,
         stickyDiskKey,
@@ -397,11 +432,14 @@ async function run(): Promise<void> {
       );
     }
   } catch (error) {
+    skip("post_error");
     if (error instanceof Error) {
       core.warning(
         `Failed to cleanup and commit sticky disk at ${stickyDiskPath}: ${error}`,
       );
     }
+  } finally {
+    await sendMountReport(report);
   }
 }
 
