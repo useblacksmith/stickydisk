@@ -6,6 +6,7 @@ import { createStickyDiskClient } from "./utils";
 import { CommitIntent, commitIntentFromMode } from "./commit-intent";
 import { evaluateOnChangeCommit, formatBytes } from "./on-change";
 import { checkPreviousStepFailures } from "./step-checker";
+import { findMountedDevice, getFilesystemUsedField, unmount } from "./mount";
 
 const execAsync = promisify(exec);
 
@@ -99,30 +100,6 @@ async function cleanupStickyDiskWithoutCommit(
     );
     // We don't want to fail the build if this fails so we swallow the error.
   }
-}
-
-async function getDeviceFromMount(mountPoint: string): Promise<string | null> {
-  try {
-    const { stdout } = await execAsync(`findmnt -n -o SOURCE "${mountPoint}"`);
-    const device = stdout.trim();
-    if (device) {
-      return device;
-    }
-  } catch {
-    core.info(`findmnt failed for ${mountPoint}, trying mount command`);
-  }
-
-  try {
-    const { stdout } = await execAsync(`mount | grep " ${mountPoint} "`);
-    const match = stdout.match(/^(\/dev\/\S+)/);
-    if (match) {
-      return match[1];
-    }
-  } catch {
-    core.info(`mount grep failed for ${mountPoint}`);
-  }
-
-  return null;
 }
 
 const FLUSH_TIMEOUT_SECS = 10;
@@ -219,26 +196,12 @@ async function run(): Promise<void> {
 
   try {
     // Check if path is mounted and get the device name for later flush
-    let devicePath: string | null = null;
-    try {
-      const { stdout: mountOutput } = await execAsync(
-        `mount | grep "${stickyDiskPath}"`,
-      );
-      if (!mountOutput) {
-        logNotMounted();
-        return;
-      }
-      devicePath = await getDeviceFromMount(stickyDiskPath);
-      if (devicePath) {
-        core.info(
-          `Found device ${devicePath} for mount point ${stickyDiskPath}`,
-        );
-      }
-    } catch {
-      // grep returns non-zero if no match found
+    const devicePath = await findMountedDevice(stickyDiskPath);
+    if (!devicePath) {
       logNotMounted();
       return;
     }
+    core.info(`Found device ${devicePath} for mount point ${stickyDiskPath}`);
 
     // Ensure all pending writes are flushed to disk before collecting usage.
     await execAsync("sync");
@@ -246,14 +209,12 @@ async function run(): Promise<void> {
     // Get filesystem usage BEFORE unmounting (critical timing)
     let fsDiskUsageBytes: number | null = null;
     try {
-      const { stdout } = await execAsync(
-        `df -B1 --output=used "${stickyDiskPath}" | tail -n1`,
-      );
-      const parsedValue = parseInt(stdout.trim(), 10);
+      const usedField = await getFilesystemUsedField(stickyDiskPath);
+      const parsedValue = parseInt(usedField, 10);
 
       if (isNaN(parsedValue) || parsedValue <= 0) {
         core.warning(
-          `Invalid filesystem usage value from df: "${stdout.trim()}". Will not report fs usage.`,
+          `Invalid filesystem usage value from df: "${usedField}". Will not report fs usage.`,
         );
       } else {
         fsDiskUsageBytes = parsedValue;
@@ -273,7 +234,7 @@ async function run(): Promise<void> {
     // Unmount with retries.
     for (let attempt = 1; attempt <= 10; attempt++) {
       try {
-        await execAsync(`sudo umount "${stickyDiskPath}"`);
+        await unmount(stickyDiskPath);
         core.info(`Successfully unmounted ${stickyDiskPath}`);
         break;
       } catch (error) {
@@ -287,13 +248,7 @@ async function run(): Promise<void> {
 
     // Flush block device buffers after unmount to ensure data durability
     // before the Ceph RBD snapshot is taken. The device is still mapped even though unmounted.
-    if (devicePath) {
-      await flushBlockDevice(devicePath);
-    } else {
-      core.info(
-        "Skipping durability flush: device path not found for mount point",
-      );
-    }
+    await flushBlockDevice(devicePath);
 
     // Determine whether to commit based on commit mode
     if (commitIntent === CommitIntent.NEVER) {

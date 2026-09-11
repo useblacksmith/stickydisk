@@ -37024,7 +37024,71 @@ async function hasAnyStepFailed(runnerBasePath) {
     return result.hasFailures;
 }
 
+;// CONCATENATED MODULE: ./src/mount.ts
+
+
+const execFileAsync = (0,external_util_.promisify)(external_child_process_.execFile);
+const runCommand = async (file, args) => {
+    const { stdout, stderr } = await execFileAsync(file, args);
+    return { stdout: String(stdout), stderr: String(stderr) };
+};
+/**
+ * Source device of a `mount` listing line whose target is exactly
+ * `mountPoint`, e.g. `/dev/vdb on /mnt/cache type ext4 (rw)` → `/dev/vdb`.
+ */
+function parseMountSource(mountOutput, mountPoint) {
+    for (const line of mountOutput.split("\n")) {
+        const match = line.match(/^(\S+) on (.+) type \S+ /);
+        if (match && match[2] === mountPoint) {
+            return match[1];
+        }
+    }
+    return null;
+}
+/** Device mounted at `mountPoint`, or null when nothing is mounted there. */
+async function findMountedDevice(mountPoint, run = runCommand) {
+    try {
+        const { stdout } = await run("findmnt", [
+            "-n",
+            "-o",
+            "SOURCE",
+            "--mountpoint",
+            mountPoint,
+        ]);
+        const device = stdout.trim();
+        if (device) {
+            return device;
+        }
+    }
+    catch {
+        // findmnt exits non-zero when the path is not a mount point; fall through
+        // to the `mount` listing in case findmnt itself is unavailable.
+    }
+    try {
+        const { stdout } = await run("mount", []);
+        return parseMountSource(stdout, mountPoint);
+    }
+    catch {
+        return null;
+    }
+}
+/** The `used` column of `df -B1` for `mountPoint`, as printed. */
+async function getFilesystemUsedField(mountPoint, run = runCommand) {
+    const { stdout } = await run("df", [
+        "-B1",
+        "--output=used",
+        "--",
+        mountPoint,
+    ]);
+    const lines = stdout.trim().split("\n");
+    return lines[lines.length - 1].trim();
+}
+async function unmount(mountPoint, run = runCommand) {
+    await run("sudo", ["umount", "--", mountPoint]);
+}
+
 ;// CONCATENATED MODULE: ./src/post.ts
+
 
 
 
@@ -37094,29 +37158,6 @@ async function cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey, reason) {
         core.warning(`Error reporting build failed: ${error instanceof Error ? error.message : String(error)}`);
         // We don't want to fail the build if this fails so we swallow the error.
     }
-}
-async function getDeviceFromMount(mountPoint) {
-    try {
-        const { stdout } = await execAsync(`findmnt -n -o SOURCE "${mountPoint}"`);
-        const device = stdout.trim();
-        if (device) {
-            return device;
-        }
-    }
-    catch {
-        core.info(`findmnt failed for ${mountPoint}, trying mount command`);
-    }
-    try {
-        const { stdout } = await execAsync(`mount | grep " ${mountPoint} "`);
-        const match = stdout.match(/^(\/dev\/\S+)/);
-        if (match) {
-            return match[1];
-        }
-    }
-    catch {
-        core.info(`mount grep failed for ${mountPoint}`);
-    }
-    return null;
 }
 const FLUSH_TIMEOUT_SECS = 10;
 const TIMEOUT_EXIT_CODE = 124;
@@ -37189,32 +37230,21 @@ async function run() {
     };
     try {
         // Check if path is mounted and get the device name for later flush
-        let devicePath = null;
-        try {
-            const { stdout: mountOutput } = await execAsync(`mount | grep "${stickyDiskPath}"`);
-            if (!mountOutput) {
-                logNotMounted();
-                return;
-            }
-            devicePath = await getDeviceFromMount(stickyDiskPath);
-            if (devicePath) {
-                core.info(`Found device ${devicePath} for mount point ${stickyDiskPath}`);
-            }
-        }
-        catch {
-            // grep returns non-zero if no match found
+        const devicePath = await findMountedDevice(stickyDiskPath);
+        if (!devicePath) {
             logNotMounted();
             return;
         }
+        core.info(`Found device ${devicePath} for mount point ${stickyDiskPath}`);
         // Ensure all pending writes are flushed to disk before collecting usage.
         await execAsync("sync");
         // Get filesystem usage BEFORE unmounting (critical timing)
         let fsDiskUsageBytes = null;
         try {
-            const { stdout } = await execAsync(`df -B1 --output=used "${stickyDiskPath}" | tail -n1`);
-            const parsedValue = parseInt(stdout.trim(), 10);
+            const usedField = await getFilesystemUsedField(stickyDiskPath);
+            const parsedValue = parseInt(usedField, 10);
             if (isNaN(parsedValue) || parsedValue <= 0) {
-                core.warning(`Invalid filesystem usage value from df: "${stdout.trim()}". Will not report fs usage.`);
+                core.warning(`Invalid filesystem usage value from df: "${usedField}". Will not report fs usage.`);
             }
             else {
                 fsDiskUsageBytes = parsedValue;
@@ -37231,7 +37261,7 @@ async function run() {
         // Unmount with retries.
         for (let attempt = 1; attempt <= 10; attempt++) {
             try {
-                await execAsync(`sudo umount "${stickyDiskPath}"`);
+                await unmount(stickyDiskPath);
                 core.info(`Successfully unmounted ${stickyDiskPath}`);
                 break;
             }
@@ -37245,12 +37275,7 @@ async function run() {
         }
         // Flush block device buffers after unmount to ensure data durability
         // before the Ceph RBD snapshot is taken. The device is still mapped even though unmounted.
-        if (devicePath) {
-            await flushBlockDevice(devicePath);
-        }
-        else {
-            core.info("Skipping durability flush: device path not found for mount point");
-        }
+        await flushBlockDevice(devicePath);
         // Determine whether to commit based on commit mode
         if (commitIntent === stickydisk_pb_CommitIntent.NEVER) {
             await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey, "commit mode is 'false' (read-only consumer)");
