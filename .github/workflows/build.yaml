@@ -43,11 +43,23 @@ jobs:
         run: npm run lint
 
       - name: Build Action
+        id: build
         run: |
           npm run build
           # Check if any files were changed during build
           if ! git diff --quiet; then
-            echo "Error: Build generated changes that aren't committed. Please run 'npm run build' locally and commit the changes."
+            echo "Error: Build generated changes that aren't committed. Please run 'npm run build' locally and commit the changes,"
+            echo "or download the 'dist' artifact from this run (gh run download ${{ github.run_id }} -n dist -D dist) and commit it."
             git diff
             exit 1
           fi
+
+      # Building needs BUF_TOKEN for the private @buf packages, which contributors
+      # without registry access (and automated fixers) do not have. Publish the
+      # bundle CI just built so it can be committed without a local build.
+      - name: Upload built dist
+        if: failure() && steps.build.outcome == 'failure'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist
+          path: dist/
