@@ -17,7 +17,12 @@ export function normalizeMountPath(
   }
 
   if (inputPath.startsWith("~/")) {
-    return path.join(home, inputPath.slice(2));
+    const segments = inputPath
+      .slice(2)
+      .split(/[/\\]/)
+      .filter((segment) => segment !== "" && segment !== "." && segment !== "..");
+
+    return path.normalize([home, ...segments].join(path.sep));
   }
 
   if (path.isAbsolute(inputPath)) {
