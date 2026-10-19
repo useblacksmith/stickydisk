@@ -9,6 +9,7 @@ import { StepFailureCheck, checkPreviousStepFailures } from "./step-checker";
 import {
   findMountedDevice,
   getFilesystemUsedField,
+  parseFstrimTimeoutSecs,
   trimFilesystem,
   unmount,
 } from "./mount";
@@ -188,6 +189,9 @@ async function run(): Promise<void> {
   const initialUsageBytesStr = getState("STICKYDISK_INITIAL_USAGE_BYTES");
   const wasFormatted = getState("STICKYDISK_WAS_FORMATTED");
   const commitEarlyDenyReason = getState("STICKYDISK_COMMIT_EARLY_DENY_REASON");
+  const fstrimTimeoutSecs = parseFstrimTimeoutSecs(
+    getState("STICKYDISK_FSTRIM_TIMEOUT_SECS"),
+  );
   const stickyDiskError = getState("STICKYDISK_ERROR") === "true";
 
   if (!stickyDiskPath) {
@@ -277,10 +281,16 @@ async function run(): Promise<void> {
     // Return freed blocks to the backing store before the commit: without a
     // trim, deleted files keep their RBD extents allocated and the disk's
     // real usage ratchets up to its high-water mark. fstrim does not change
-    // the `used` sample above. Best-effort and a no-op until the hypervisor
-    // negotiates discard for the device.
-    if (failureCheck && !failureCheck.error && !failureCheck.hasFailures) {
-      const trim = await trimFilesystem(stickyDiskPath);
+    // the `used` sample above. Best-effort, bounded by the budget the host
+    // handed out at mount time (0 = not enabled on this host yet), and a
+    // no-op until the hypervisor negotiates discard for the device.
+    if (
+      fstrimTimeoutSecs > 0 &&
+      failureCheck &&
+      !failureCheck.error &&
+      !failureCheck.hasFailures
+    ) {
+      const trim = await trimFilesystem(stickyDiskPath, fstrimTimeoutSecs);
       const trimmed =
         trim.trimmedBytes === null ? "" : `, ${formatBytes(trim.trimmedBytes)}`;
       const detail = trim.detail ? `: ${trim.detail}` : "";

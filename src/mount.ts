@@ -87,7 +87,17 @@ export async function unmount(
   await run("sudo", ["umount", "--", mountPoint]);
 }
 
-export const TRIM_TIMEOUT_SECS = 60;
+/**
+ * Parses the host's fstrim budget (GetStickyDiskResponse.fstrim_timeout_secs,
+ * a protobuf int64 that arrives as a bigint, or the string the post step reads
+ * back from action state) into whole seconds. Anything unusable is 0, which
+ * disables the trim.
+ */
+export function parseFstrimTimeoutSecs(value: unknown): number {
+  const n = typeof value === "bigint" ? Number(value) : Number(value ?? 0);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.floor(n);
+}
 const TIMEOUT_EXIT_CODE = 124;
 
 export interface TrimResult {
@@ -113,12 +123,13 @@ export function parseTrimmedBytes(fstrimOutput: string): number | null {
  */
 export async function trimFilesystem(
   mountPoint: string,
+  timeoutSecs: number,
   run: CommandRunner = runCommand,
 ): Promise<TrimResult> {
   const start = Date.now();
   try {
     const { stdout } = await run("timeout", [
-      String(TRIM_TIMEOUT_SECS),
+      String(timeoutSecs),
       "sudo",
       "fstrim",
       "-v",
@@ -142,7 +153,7 @@ export async function trimFilesystem(
         outcome: "timed_out",
         durationMs,
         trimmedBytes: null,
-        detail: `timed out after ${TRIM_TIMEOUT_SECS}s`,
+        detail: `timed out after ${timeoutSecs}s`,
       };
     }
     const stderrText = typeof stderr === "string" ? stderr.trim() : "";

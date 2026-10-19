@@ -27412,10 +27412,132 @@ var __webpack_exports__ = {};
 
 // EXTERNAL MODULE: ./node_modules/@actions/core/lib/core.js
 var core = __nccwpck_require__(7484);
-// EXTERNAL MODULE: external "util"
-var external_util_ = __nccwpck_require__(9023);
 // EXTERNAL MODULE: external "child_process"
 var external_child_process_ = __nccwpck_require__(5317);
+// EXTERNAL MODULE: external "util"
+var external_util_ = __nccwpck_require__(9023);
+;// CONCATENATED MODULE: ./src/mount.ts
+
+
+const execFileAsync = (0,external_util_.promisify)(external_child_process_.execFile);
+const runCommand = async (file, args) => {
+    const { stdout, stderr } = await execFileAsync(file, args);
+    return { stdout: String(stdout), stderr: String(stderr) };
+};
+/**
+ * Source device of a `mount` listing line whose target is exactly
+ * `mountPoint`, e.g. `/dev/vdb on /mnt/cache type ext4 (rw)` → `/dev/vdb`.
+ */
+function parseMountSource(mountOutput, mountPoint) {
+    for (const line of mountOutput.split("\n")) {
+        const match = line.match(/^(\S+) on (.+) type \S+ /);
+        if (match && match[2] === mountPoint) {
+            return match[1];
+        }
+    }
+    return null;
+}
+/** Device mounted at `mountPoint`, or null when nothing is mounted there. */
+async function findMountedDevice(mountPoint, run = runCommand) {
+    try {
+        const { stdout } = await run("findmnt", [
+            "-n",
+            "-o",
+            "SOURCE",
+            "--mountpoint",
+            mountPoint,
+        ]);
+        const device = stdout.trim();
+        if (device) {
+            return device;
+        }
+    }
+    catch {
+        // findmnt exits non-zero when the path is not a mount point; fall through
+        // to the `mount` listing in case findmnt itself is unavailable.
+    }
+    try {
+        const { stdout } = await run("mount", []);
+        return parseMountSource(stdout, mountPoint);
+    }
+    catch {
+        return null;
+    }
+}
+/** The `used` column of `df -B1` for `mountPoint`, as printed. */
+async function getFilesystemUsedField(mountPoint, run = runCommand) {
+    const { stdout } = await run("df", [
+        "-B1",
+        "--output=used",
+        "--",
+        mountPoint,
+    ]);
+    const lines = stdout.trim().split("\n");
+    return lines[lines.length - 1].trim();
+}
+async function unmount(mountPoint, run = runCommand) {
+    await run("sudo", ["umount", "--", mountPoint]);
+}
+/**
+ * Parses the host's fstrim budget (GetStickyDiskResponse.fstrim_timeout_secs,
+ * a protobuf int64 that arrives as a bigint, or the string the post step reads
+ * back from action state) into whole seconds. Anything unusable is 0, which
+ * disables the trim.
+ */
+function parseFstrimTimeoutSecs(value) {
+    const n = typeof value === "bigint" ? Number(value) : Number(value !== null && value !== void 0 ? value : 0);
+    if (!Number.isFinite(n) || n <= 0)
+        return 0;
+    return Math.floor(n);
+}
+const TIMEOUT_EXIT_CODE = 124;
+/** Byte count from `fstrim -v` output such as `/mnt: 1 GiB (1073741824 bytes) trimmed`. */
+function parseTrimmedBytes(fstrimOutput) {
+    const match = fstrimOutput.match(/\((\d+) bytes\) trimmed/);
+    return match ? parseInt(match[1], 10) : null;
+}
+/**
+ * Best-effort `fstrim` of the filesystem at `mountPoint`, so blocks freed
+ * during the job are discarded before the device is unmounted and committed.
+ * Never throws: a missing binary, a filesystem or device without discard
+ * support, and the timeout all come back as a non-`trimmed` outcome.
+ */
+async function trimFilesystem(mountPoint, timeoutSecs, run = runCommand) {
+    const start = Date.now();
+    try {
+        const { stdout } = await run("timeout", [
+            String(timeoutSecs),
+            "sudo",
+            "fstrim",
+            "-v",
+            "--",
+            mountPoint,
+        ]);
+        return {
+            outcome: "trimmed",
+            durationMs: Date.now() - start,
+            trimmedBytes: parseTrimmedBytes(stdout),
+            detail: "",
+        };
+    }
+    catch (error) {
+        const durationMs = Date.now() - start;
+        const { code, stderr } = (error !== null && error !== void 0 ? error : {});
+        if (code === TIMEOUT_EXIT_CODE) {
+            return {
+                outcome: "timed_out",
+                durationMs,
+                trimmedBytes: null,
+                detail: `timed out after ${timeoutSecs}s`,
+            };
+        }
+        const stderrText = typeof stderr === "string" ? stderr.trim() : "";
+        const detail = stderrText ||
+            (error instanceof Error ? error.message : String(error)).trim();
+        return { outcome: "failed", durationMs, trimmedBytes: null, detail };
+    }
+}
+
 // EXTERNAL MODULE: external "path"
 var external_path_ = __nccwpck_require__(6928);
 ;// CONCATENATED MODULE: ./node_modules/@bufbuild/protobuf/dist/esm/service-type.js
@@ -36916,6 +37038,7 @@ function getWorkspaceLocalParentToChown(mountPath, cwd = process.cwd()) {
 
 
 
+
 const execAsync = (0,external_util_.promisify)(external_child_process_.exec);
 // stickyDiskTimeoutMs states the max amount of time this action will wait for the VM agent to
 // expose the sticky disk from the storage agent, map it onto the host and then patch the drive
@@ -36942,6 +37065,7 @@ async function getStickyDisk(stickyDiskKey, commitIntent, options) {
         commit_early_deny_reason: response.commitEarlyDeny
             ? response.commitEarlyDenyReason || "denied by host policy"
             : "",
+        fstrim_timeout_secs: parseFstrimTimeoutSecs(response.fstrimTimeoutSecs),
     };
 }
 // The VM agent's sticky-disk response can arrive before the guest kernel has
@@ -37067,6 +37191,7 @@ async function mountStickyDisk(stickyDiskKey, commitIntent, stickyDiskPath, sign
     // Saved before format/mount so the post step can report a guest-side
     // failure against the disk the host exposed.
     (0,core.saveState)("STICKYDISK_EXPOSE_ID", exposeId);
+    (0,core.saveState)("STICKYDISK_FSTRIM_TIMEOUT_SECS", String(stickyDiskResponse.fstrim_timeout_secs));
     const commitEarlyDenyReason = stickyDiskResponse.commit_early_deny_reason;
     if (commitEarlyDenyReason !== "") {
         core.notice(`Sticky disk changes will not be committed for this job (${commitEarlyDenyReason}). The sticky disk is used as-is and any changes to it are discarded.`);

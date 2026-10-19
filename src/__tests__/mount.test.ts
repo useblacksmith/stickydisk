@@ -4,6 +4,7 @@ import {
   findMountedDevice,
   getFilesystemUsedField,
   parseMountSource,
+  parseFstrimTimeoutSecs,
   parseTrimmedBytes,
   trimFilesystem,
   unmount,
@@ -73,17 +74,29 @@ describe("mount helpers", () => {
       timeout: { stdout: `${hostilePath}: 1 GiB (1073741824 bytes) trimmed\n` },
     });
 
-    const result = await trimFilesystem(hostilePath, run);
+    const result = await trimFilesystem(hostilePath, 5, run);
 
     expect(calls).toEqual([
       {
         file: "timeout",
-        args: ["60", "sudo", "fstrim", "-v", "--", hostilePath],
+        args: ["5", "sudo", "fstrim", "-v", "--", hostilePath],
       },
     ]);
     expect(result.outcome).toBe("trimmed");
     expect(result.trimmedBytes).toBe(1073741824);
     expect(result.detail).toBe("");
+  });
+
+  it("parses the host fstrim budget from the RPC bigint or saved state", () => {
+    expect(parseFstrimTimeoutSecs(BigInt(5))).toBe(5);
+    expect(parseFstrimTimeoutSecs(5)).toBe(5);
+    expect(parseFstrimTimeoutSecs("5")).toBe(5);
+    expect(parseFstrimTimeoutSecs("2.9")).toBe(2);
+    expect(parseFstrimTimeoutSecs(BigInt(0))).toBe(0);
+    expect(parseFstrimTimeoutSecs(-1)).toBe(0);
+    expect(parseFstrimTimeoutSecs("")).toBe(0);
+    expect(parseFstrimTimeoutSecs(undefined)).toBe(0);
+    expect(parseFstrimTimeoutSecs("nope")).toBe(0);
   });
 
   it("parses the byte count from fstrim -v across util-linux output shapes", () => {
@@ -105,6 +118,7 @@ describe("mount helpers", () => {
     expect(
       await trimFilesystem(
         "/mnt/cache",
+        5,
         recordingRunner({ timeout: unsupported }).run,
       ),
     ).toMatchObject({
@@ -120,12 +134,13 @@ describe("mount helpers", () => {
     expect(
       await trimFilesystem(
         "/mnt/cache",
+        5,
         recordingRunner({ timeout: timedOut }).run,
       ),
     ).toMatchObject({
       outcome: "timed_out",
       trimmedBytes: null,
-      detail: "timed out after 60s",
+      detail: "timed out after 5s",
     });
 
     const missing = Object.assign(new Error("spawn timeout ENOENT"), {
@@ -134,6 +149,7 @@ describe("mount helpers", () => {
     expect(
       await trimFilesystem(
         "/mnt/cache",
+        5,
         recordingRunner({ timeout: missing }).run,
       ),
     ).toMatchObject({

@@ -37086,7 +37086,18 @@ async function getFilesystemUsedField(mountPoint, run = runCommand) {
 async function unmount(mountPoint, run = runCommand) {
     await run("sudo", ["umount", "--", mountPoint]);
 }
-const TRIM_TIMEOUT_SECS = 60;
+/**
+ * Parses the host's fstrim budget (GetStickyDiskResponse.fstrim_timeout_secs,
+ * a protobuf int64 that arrives as a bigint, or the string the post step reads
+ * back from action state) into whole seconds. Anything unusable is 0, which
+ * disables the trim.
+ */
+function parseFstrimTimeoutSecs(value) {
+    const n = typeof value === "bigint" ? Number(value) : Number(value !== null && value !== void 0 ? value : 0);
+    if (!Number.isFinite(n) || n <= 0)
+        return 0;
+    return Math.floor(n);
+}
 const TIMEOUT_EXIT_CODE = 124;
 /** Byte count from `fstrim -v` output such as `/mnt: 1 GiB (1073741824 bytes) trimmed`. */
 function parseTrimmedBytes(fstrimOutput) {
@@ -37099,11 +37110,11 @@ function parseTrimmedBytes(fstrimOutput) {
  * Never throws: a missing binary, a filesystem or device without discard
  * support, and the timeout all come back as a non-`trimmed` outcome.
  */
-async function trimFilesystem(mountPoint, run = runCommand) {
+async function trimFilesystem(mountPoint, timeoutSecs, run = runCommand) {
     const start = Date.now();
     try {
         const { stdout } = await run("timeout", [
-            String(TRIM_TIMEOUT_SECS),
+            String(timeoutSecs),
             "sudo",
             "fstrim",
             "-v",
@@ -37125,7 +37136,7 @@ async function trimFilesystem(mountPoint, run = runCommand) {
                 outcome: "timed_out",
                 durationMs,
                 trimmedBytes: null,
-                detail: `timed out after ${TRIM_TIMEOUT_SECS}s`,
+                detail: `timed out after ${timeoutSecs}s`,
             };
         }
         const stderrText = typeof stderr === "string" ? stderr.trim() : "";
@@ -37352,6 +37363,7 @@ async function run() {
     const initialUsageBytesStr = (0,core.getState)("STICKYDISK_INITIAL_USAGE_BYTES");
     const wasFormatted = (0,core.getState)("STICKYDISK_WAS_FORMATTED");
     const commitEarlyDenyReason = (0,core.getState)("STICKYDISK_COMMIT_EARLY_DENY_REASON");
+    const fstrimTimeoutSecs = parseFstrimTimeoutSecs((0,core.getState)("STICKYDISK_FSTRIM_TIMEOUT_SECS"));
     const stickyDiskError = (0,core.getState)("STICKYDISK_ERROR") === "true";
     if (!stickyDiskPath) {
         core.debug("No STICKYDISK_PATH in state, skipping unmount");
@@ -37425,10 +37437,14 @@ async function run() {
         // Return freed blocks to the backing store before the commit: without a
         // trim, deleted files keep their RBD extents allocated and the disk's
         // real usage ratchets up to its high-water mark. fstrim does not change
-        // the `used` sample above. Best-effort and a no-op until the hypervisor
-        // negotiates discard for the device.
-        if (failureCheck && !failureCheck.error && !failureCheck.hasFailures) {
-            const trim = await trimFilesystem(stickyDiskPath);
+        // the `used` sample above. Best-effort, bounded by the budget the host
+        // handed out at mount time (0 = not enabled on this host yet), and a
+        // no-op until the hypervisor negotiates discard for the device.
+        if (fstrimTimeoutSecs > 0 &&
+            failureCheck &&
+            !failureCheck.error &&
+            !failureCheck.hasFailures) {
+            const trim = await trimFilesystem(stickyDiskPath, fstrimTimeoutSecs);
             const trimmed = trim.trimmedBytes === null ? "" : `, ${formatBytes(trim.trimmedBytes)}`;
             const detail = trim.detail ? `: ${trim.detail}` : "";
             core.info(`fstrim ${stickyDiskPath}: ${trim.outcome} in ${trim.durationMs}ms${trimmed}${detail}`);
