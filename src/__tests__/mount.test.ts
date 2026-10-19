@@ -4,6 +4,8 @@ import {
   findMountedDevice,
   getFilesystemUsedField,
   parseMountSource,
+  parseTrimmedBytes,
+  trimFilesystem,
   unmount,
 } from "../mount";
 
@@ -64,6 +66,80 @@ describe("mount helpers", () => {
     });
     expect(await findMountedDevice("/mnt/cache", run)).toBe("/dev/vdb");
     expect(await findMountedDevice("/mnt/cache/nested", run)).toBeNull();
+  });
+
+  it("runs fstrim under timeout and sudo with the path as one argv element", async () => {
+    const { run, calls } = recordingRunner({
+      timeout: { stdout: `${hostilePath}: 1 GiB (1073741824 bytes) trimmed\n` },
+    });
+
+    const result = await trimFilesystem(hostilePath, run);
+
+    expect(calls).toEqual([
+      {
+        file: "timeout",
+        args: ["60", "sudo", "fstrim", "-v", "--", hostilePath],
+      },
+    ]);
+    expect(result.outcome).toBe("trimmed");
+    expect(result.trimmedBytes).toBe(1073741824);
+    expect(result.detail).toBe("");
+  });
+
+  it("parses the byte count from fstrim -v across util-linux output shapes", () => {
+    expect(parseTrimmedBytes("/mnt: 0 B (0 bytes) trimmed\n")).toBe(0);
+    expect(
+      parseTrimmedBytes(
+        "/mnt: 1.2 GiB (1288490188 bytes) trimmed on /dev/vdb\n",
+      ),
+    ).toBe(1288490188);
+    expect(parseTrimmedBytes("")).toBeNull();
+    expect(parseTrimmedBytes("fstrim: /mnt: FITRIM ioctl failed")).toBeNull();
+  });
+
+  it("never throws from trimFilesystem and classifies the failure", async () => {
+    const unsupported = Object.assign(new Error("Command failed"), {
+      code: 1,
+      stderr: "fstrim: /mnt/cache: the discard operation is not supported\n",
+    });
+    expect(
+      await trimFilesystem(
+        "/mnt/cache",
+        recordingRunner({ timeout: unsupported }).run,
+      ),
+    ).toMatchObject({
+      outcome: "failed",
+      trimmedBytes: null,
+      detail: "fstrim: /mnt/cache: the discard operation is not supported",
+    });
+
+    const timedOut = Object.assign(new Error("Command failed"), {
+      code: 124,
+      stderr: "",
+    });
+    expect(
+      await trimFilesystem(
+        "/mnt/cache",
+        recordingRunner({ timeout: timedOut }).run,
+      ),
+    ).toMatchObject({
+      outcome: "timed_out",
+      trimmedBytes: null,
+      detail: "timed out after 60s",
+    });
+
+    const missing = Object.assign(new Error("spawn timeout ENOENT"), {
+      code: "ENOENT",
+    });
+    expect(
+      await trimFilesystem(
+        "/mnt/cache",
+        recordingRunner({ timeout: missing }).run,
+      ),
+    ).toMatchObject({
+      outcome: "failed",
+      detail: "spawn timeout ENOENT",
+    });
   });
 
   const itOnLinux = process.platform === "linux" ? it : it.skip;

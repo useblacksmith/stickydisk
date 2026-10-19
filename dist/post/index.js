@@ -37086,6 +37086,54 @@ async function getFilesystemUsedField(mountPoint, run = runCommand) {
 async function unmount(mountPoint, run = runCommand) {
     await run("sudo", ["umount", "--", mountPoint]);
 }
+const TRIM_TIMEOUT_SECS = 60;
+const TIMEOUT_EXIT_CODE = 124;
+/** Byte count from `fstrim -v` output such as `/mnt: 1 GiB (1073741824 bytes) trimmed`. */
+function parseTrimmedBytes(fstrimOutput) {
+    const match = fstrimOutput.match(/\((\d+) bytes\) trimmed/);
+    return match ? parseInt(match[1], 10) : null;
+}
+/**
+ * Best-effort `fstrim` of the filesystem at `mountPoint`, so blocks freed
+ * during the job are discarded before the device is unmounted and committed.
+ * Never throws: a missing binary, a filesystem or device without discard
+ * support, and the timeout all come back as a non-`trimmed` outcome.
+ */
+async function trimFilesystem(mountPoint, run = runCommand) {
+    const start = Date.now();
+    try {
+        const { stdout } = await run("timeout", [
+            String(TRIM_TIMEOUT_SECS),
+            "sudo",
+            "fstrim",
+            "-v",
+            "--",
+            mountPoint,
+        ]);
+        return {
+            outcome: "trimmed",
+            durationMs: Date.now() - start,
+            trimmedBytes: parseTrimmedBytes(stdout),
+            detail: "",
+        };
+    }
+    catch (error) {
+        const durationMs = Date.now() - start;
+        const { code, stderr } = (error !== null && error !== void 0 ? error : {});
+        if (code === TIMEOUT_EXIT_CODE) {
+            return {
+                outcome: "timed_out",
+                durationMs,
+                trimmedBytes: null,
+                detail: `timed out after ${TRIM_TIMEOUT_SECS}s`,
+            };
+        }
+        const stderrText = typeof stderr === "string" ? stderr.trim() : "";
+        const detail = stderrText ||
+            (error instanceof Error ? error.message : String(error)).trim();
+        return { outcome: "failed", durationMs, trimmedBytes: null, detail };
+    }
+}
 
 ;// CONCATENATED MODULE: ./src/mount-report.ts
 
@@ -37248,7 +37296,7 @@ async function cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey, reason) {
     }
 }
 const FLUSH_TIMEOUT_SECS = 10;
-const TIMEOUT_EXIT_CODE = 124;
+const post_TIMEOUT_EXIT_CODE = 124;
 async function flushBlockDevice(devicePath) {
     const deviceName = devicePath.replace("/dev/", "");
     if (!deviceName) {
@@ -37271,7 +37319,7 @@ async function flushBlockDevice(devicePath) {
         // Parse exit code from output
         const exitCodeMatch = stdout.match(/EXIT_CODE:(\d+)/);
         const exitCode = exitCodeMatch ? parseInt(exitCodeMatch[1], 10) : 0;
-        if (exitCode === TIMEOUT_EXIT_CODE) {
+        if (exitCode === post_TIMEOUT_EXIT_CODE) {
             core.info(`guest flush timed out for ${devicePath} after ${FLUSH_TIMEOUT_SECS}s`);
             return;
         }
@@ -37296,6 +37344,7 @@ async function flushBlockDevice(devicePath) {
     }
 }
 async function run() {
+    var _a;
     const stickyDiskPath = (0,core.getState)("STICKYDISK_PATH");
     const exposeId = (0,core.getState)("STICKYDISK_EXPOSE_ID");
     const stickyDiskKey = (0,core.getState)("STICKYDISK_KEY");
@@ -37357,6 +37406,33 @@ async function run() {
             const errorMsg = error instanceof Error ? error.message : String(error);
             core.warning(`Failed to get filesystem usage: ${errorMsg}. Will not report fs usage.`);
         }
+        // Every input to the commit decision is known before unmount, so decide
+        // it here: the trim below is only worth running when the snapshot taken
+        // after unmount will be kept.
+        const onChangeVerdict = commitIntent === stickydisk_pb_CommitIntent.ON_CHANGE
+            ? evaluateOnChangeCommit(initialUsageBytesStr, fsDiskUsageBytes)
+            : null;
+        const commitPossible = !stickyDiskError &&
+            commitIntent !== stickydisk_pb_CommitIntent.NEVER &&
+            !commitEarlyDenyReason &&
+            !(commitIntent === stickydisk_pb_CommitIntent.IF_MISSING && wasFormatted !== "true") &&
+            ((_a = onChangeVerdict === null || onChangeVerdict === void 0 ? void 0 : onChangeVerdict.commit) !== null && _a !== void 0 ? _a : true);
+        let failureCheck = null;
+        if (commitPossible) {
+            core.info("Checking for previous step failures before committing sticky disk");
+            failureCheck = await checkPreviousStepFailures();
+        }
+        // Return freed blocks to the backing store before the commit: without a
+        // trim, deleted files keep their RBD extents allocated and the disk's
+        // real usage ratchets up to its high-water mark. fstrim does not change
+        // the `used` sample above. Best-effort and a no-op until the hypervisor
+        // negotiates discard for the device.
+        if (failureCheck && !failureCheck.error && !failureCheck.hasFailures) {
+            const trim = await trimFilesystem(stickyDiskPath);
+            const trimmed = trim.trimmedBytes === null ? "" : `, ${formatBytes(trim.trimmedBytes)}`;
+            const detail = trim.detail ? `: ${trim.detail}` : "";
+            core.info(`fstrim ${stickyDiskPath}: ${trim.outcome} in ${trim.durationMs}ms${trimmed}${detail}`);
+        }
         // Drop page cache, dentries and inodes to ensure clean unmount
         // This helps prevent "device is busy" errors during unmount
         await execAsync("sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'");
@@ -37403,10 +37479,9 @@ async function run() {
             await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey, "commit mode is 'if-missing' and a snapshot already existed at mount time (disk was not freshly formatted)");
             return;
         }
-        if (commitIntent === stickydisk_pb_CommitIntent.ON_CHANGE) {
-            const verdict = evaluateOnChangeCommit(initialUsageBytesStr, fsDiskUsageBytes);
-            core.info(verdict.summary);
-            if (!verdict.commit) {
+        if (onChangeVerdict) {
+            core.info(onChangeVerdict.summary);
+            if (!onChangeVerdict.commit) {
                 skip("on_change_unchanged");
                 await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey, "commit mode is 'on-change' and the filesystem did not change");
                 return;
@@ -37414,8 +37489,7 @@ async function run() {
         }
         // Check for previous step failures before committing
         if (!stickyDiskError) {
-            core.info("Checking for previous step failures before committing sticky disk");
-            const failureCheck = await checkPreviousStepFailures();
+            failureCheck !== null && failureCheck !== void 0 ? failureCheck : (failureCheck = await checkPreviousStepFailures());
             if (failureCheck.error) {
                 core.warning(`Unable to check for previous step failures: ${failureCheck.error}`);
                 core.warning("Skipping sticky disk commit due to ambiguity in failure detection");

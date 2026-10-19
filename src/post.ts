@@ -5,8 +5,13 @@ import { getState } from "@actions/core";
 import { createStickyDiskClient } from "./utils";
 import { CommitIntent, commitIntentFromMode } from "./commit-intent";
 import { evaluateOnChangeCommit, formatBytes } from "./on-change";
-import { checkPreviousStepFailures } from "./step-checker";
-import { findMountedDevice, getFilesystemUsedField, unmount } from "./mount";
+import { StepFailureCheck, checkPreviousStepFailures } from "./step-checker";
+import {
+  findMountedDevice,
+  getFilesystemUsedField,
+  trimFilesystem,
+  unmount,
+} from "./mount";
 import {
   MountReport,
   SkipReason,
@@ -248,6 +253,42 @@ async function run(): Promise<void> {
       );
     }
 
+    // Every input to the commit decision is known before unmount, so decide
+    // it here: the trim below is only worth running when the snapshot taken
+    // after unmount will be kept.
+    const onChangeVerdict =
+      commitIntent === CommitIntent.ON_CHANGE
+        ? evaluateOnChangeCommit(initialUsageBytesStr, fsDiskUsageBytes)
+        : null;
+    const commitPossible =
+      !stickyDiskError &&
+      commitIntent !== CommitIntent.NEVER &&
+      !commitEarlyDenyReason &&
+      !(commitIntent === CommitIntent.IF_MISSING && wasFormatted !== "true") &&
+      (onChangeVerdict?.commit ?? true);
+    let failureCheck: StepFailureCheck | null = null;
+    if (commitPossible) {
+      core.info(
+        "Checking for previous step failures before committing sticky disk",
+      );
+      failureCheck = await checkPreviousStepFailures();
+    }
+
+    // Return freed blocks to the backing store before the commit: without a
+    // trim, deleted files keep their RBD extents allocated and the disk's
+    // real usage ratchets up to its high-water mark. fstrim does not change
+    // the `used` sample above. Best-effort and a no-op until the hypervisor
+    // negotiates discard for the device.
+    if (failureCheck && !failureCheck.error && !failureCheck.hasFailures) {
+      const trim = await trimFilesystem(stickyDiskPath);
+      const trimmed =
+        trim.trimmedBytes === null ? "" : `, ${formatBytes(trim.trimmedBytes)}`;
+      const detail = trim.detail ? `: ${trim.detail}` : "";
+      core.info(
+        `fstrim ${stickyDiskPath}: ${trim.outcome} in ${trim.durationMs}ms${trimmed}${detail}`,
+      );
+    }
+
     // Drop page cache, dentries and inodes to ensure clean unmount
     // This helps prevent "device is busy" errors during unmount
     await execAsync("sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'");
@@ -310,13 +351,9 @@ async function run(): Promise<void> {
       return;
     }
 
-    if (commitIntent === CommitIntent.ON_CHANGE) {
-      const verdict = evaluateOnChangeCommit(
-        initialUsageBytesStr,
-        fsDiskUsageBytes,
-      );
-      core.info(verdict.summary);
-      if (!verdict.commit) {
+    if (onChangeVerdict) {
+      core.info(onChangeVerdict.summary);
+      if (!onChangeVerdict.commit) {
         skip("on_change_unchanged");
         await cleanupStickyDiskWithoutCommit(
           exposeId,
@@ -329,10 +366,7 @@ async function run(): Promise<void> {
 
     // Check for previous step failures before committing
     if (!stickyDiskError) {
-      core.info(
-        "Checking for previous step failures before committing sticky disk",
-      );
-      const failureCheck = await checkPreviousStepFailures();
+      failureCheck ??= await checkPreviousStepFailures();
 
       if (failureCheck.error) {
         core.warning(

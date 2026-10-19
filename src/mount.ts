@@ -86,3 +86,69 @@ export async function unmount(
 ): Promise<void> {
   await run("sudo", ["umount", "--", mountPoint]);
 }
+
+export const TRIM_TIMEOUT_SECS = 60;
+const TIMEOUT_EXIT_CODE = 124;
+
+export interface TrimResult {
+  outcome: "trimmed" | "timed_out" | "failed";
+  durationMs: number;
+  /** Byte count from `fstrim -v`, when the output carried one. */
+  trimmedBytes: number | null;
+  /** Error or stderr text for a non-`trimmed` outcome. */
+  detail: string;
+}
+
+/** Byte count from `fstrim -v` output such as `/mnt: 1 GiB (1073741824 bytes) trimmed`. */
+export function parseTrimmedBytes(fstrimOutput: string): number | null {
+  const match = fstrimOutput.match(/\((\d+) bytes\) trimmed/);
+  return match ? parseInt(match[1], 10) : null;
+}
+
+/**
+ * Best-effort `fstrim` of the filesystem at `mountPoint`, so blocks freed
+ * during the job are discarded before the device is unmounted and committed.
+ * Never throws: a missing binary, a filesystem or device without discard
+ * support, and the timeout all come back as a non-`trimmed` outcome.
+ */
+export async function trimFilesystem(
+  mountPoint: string,
+  run: CommandRunner = runCommand,
+): Promise<TrimResult> {
+  const start = Date.now();
+  try {
+    const { stdout } = await run("timeout", [
+      String(TRIM_TIMEOUT_SECS),
+      "sudo",
+      "fstrim",
+      "-v",
+      "--",
+      mountPoint,
+    ]);
+    return {
+      outcome: "trimmed",
+      durationMs: Date.now() - start,
+      trimmedBytes: parseTrimmedBytes(stdout),
+      detail: "",
+    };
+  } catch (error) {
+    const durationMs = Date.now() - start;
+    const { code, stderr } = (error ?? {}) as {
+      code?: unknown;
+      stderr?: unknown;
+    };
+    if (code === TIMEOUT_EXIT_CODE) {
+      return {
+        outcome: "timed_out",
+        durationMs,
+        trimmedBytes: null,
+        detail: `timed out after ${TRIM_TIMEOUT_SECS}s`,
+      };
+    }
+    const stderrText = typeof stderr === "string" ? stderr.trim() : "";
+    const detail =
+      stderrText ||
+      (error instanceof Error ? error.message : String(error)).trim();
+    return { outcome: "failed", durationMs, trimmedBytes: null, detail };
+  }
+}

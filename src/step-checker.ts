@@ -6,7 +6,7 @@ import * as core from "@actions/core";
 // was read as a clean run. Accept either spelling, and any casing.
 const FAILURE_RESULT = /^(?:failed|cancell?ed)$/i;
 
-interface StepFailureCheck {
+export interface StepFailureCheck {
   hasFailures: boolean;
   failedCount: number;
   failedSteps?: {
