@@ -1,5 +1,5 @@
 import { getInput, saveState } from "@actions/core";
-import { parseFstrimTimeoutSecs } from "./mount";
+import { fstrimTimeoutSecsFrom } from "./mount";
 import * as core from "@actions/core";
 import { promisify } from "util";
 import { exec } from "child_process";
@@ -59,8 +59,9 @@ async function getStickyDisk(
     commit_early_deny_reason: response.commitEarlyDeny
       ? response.commitEarlyDenyReason || "denied by host policy"
       : "",
-    fstrim_timeout_secs: parseFstrimTimeoutSecs(
-      (response as { fstrimTimeoutSecs?: bigint | number }).fstrimTimeoutSecs,
+    fstrim_timeout_secs: fstrimTimeoutSecsFrom(
+      response,
+      response.getType().runtime.bin.listUnknownFields(response),
     ),
   };
 }
