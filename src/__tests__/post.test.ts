@@ -29,6 +29,7 @@ async function runPost(state: Record<string, string>): Promise<MountReport> {
     });
   });
   jest.isolateModules(() => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     require("../post");
   });
   return finished;
