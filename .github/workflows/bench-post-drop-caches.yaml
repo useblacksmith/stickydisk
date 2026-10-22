@@ -5,39 +5,43 @@ on:
 
 jobs:
   bench:
-    name: ${{ matrix.runner }} ${{ matrix.variant }} ${{ matrix.round }}
+    name: ${{ matrix.runner }} ${{ matrix.shape }} ${{ matrix.variant }} ${{ matrix.round }}
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         runner: [blacksmith-2vcpu-ubuntu-2404, blacksmith-8vcpu-ubuntu-2404]
         variant: [drop-then-umount, umount-only]
-        round: [1, 2, 3, 4, 5, 6]
+        shape: [root-heavy, sticky-heavy]
+        round: [1, 2, 3]
     steps:
       - name: Warm page cache on the root disk
         run: |
           set -euo pipefail
           mkdir -p ~/warm && cd ~/warm
           # Large clean files, like toolchains, docker layers and build outputs.
-          for i in 1 2 3; do head -c 1G /dev/urandom > big$i; done
+          n=3; [ "${{ matrix.shape }}" = sticky-heavy ] && n=0
+          for i in $(seq 1 $n); do head -c 1G /dev/urandom > big$i; done
           # Many small files, like node_modules.
           mkdir -p small && for d in $(seq 1 200); do mkdir small/$d; for f in $(seq 1 500); do echo $d$f > small/$d/$f; done; done
           sync
-          cat big* > /dev/null
+          cat big* > /dev/null 2>&1 || true
           find small -type f | xargs cat > /dev/null
           free -m
 
       - name: Mount sticky disk
         uses: useblacksmith/stickydisk@v1
         with:
-          key: bench-drop-caches-${{ matrix.runner }}-${{ matrix.variant }}-${{ matrix.round }}
+          key: bench-drop-caches-${{ matrix.runner }}-${{ matrix.shape }}-${{ matrix.variant }}-${{ matrix.round }}
           path: ./cache
           commit: "false"
 
       - name: Write to the sticky disk
         run: |
           set -euo pipefail
-          head -c 512M /dev/urandom > cache/blob
+          mb=512; [ "${{ matrix.shape }}" = sticky-heavy ] && mb=3072
+          head -c ${mb}M /dev/urandom > cache/blob
+          sync && cat cache/blob > /dev/null
           mkdir -p cache/small && for d in $(seq 1 50); do mkdir -p cache/small/$d; for f in $(seq 1 500); do echo $d$f > cache/small/$d/$f; done; done
           free -m
 
@@ -52,4 +56,4 @@ jobs:
           t2=$(ms); sudo umount ./cache; t3=$(ms)
           # Cost of dropping whatever page cache is left, for reference.
           sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'; t4=$(ms)
-          echo "BENCH runner=${{ matrix.runner }} variant=${{ matrix.variant }} sync_ms=$((t1-t0)) drop_ms=$((t2-t1)) umount_ms=$((t3-t2)) drop_and_umount_ms=$((t3-t1)) residual_drop_ms=$((t4-t3))" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "BENCH runner=${{ matrix.runner }} shape=${{ matrix.shape }} variant=${{ matrix.variant }} sync_ms=$((t1-t0)) drop_ms=$((t2-t1)) umount_ms=$((t3-t2)) drop_and_umount_ms=$((t3-t1)) residual_drop_ms=$((t4-t3))" | tee -a "$GITHUB_STEP_SUMMARY"
