@@ -37330,6 +37330,12 @@ async function run() {
         }
     };
     try {
+        // A failed expose can leave another action's disk mounted at this path.
+        if (!exposeId) {
+            core.info(`Skipping unmount and commit for ${stickyDiskPath}: no disk was exposed for this action invocation`);
+            skip(stickyDiskError ? "setup_error" : "not_mounted");
+            return;
+        }
         // Check if path is mounted and get the device name for later flush
         const devicePath = await findMountedDevice(stickyDiskPath);
         if (!devicePath) {
