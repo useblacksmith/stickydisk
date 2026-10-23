@@ -1,5 +1,5 @@
 import { getInput, saveState } from "@actions/core";
-import { parseFstrimTimeoutSecs } from "./mount";
+import { parseFstrimMinExtentBytes, parseFstrimTimeoutSecs } from "./mount";
 import * as core from "@actions/core";
 import { promisify } from "util";
 import { exec } from "child_process";
@@ -33,6 +33,8 @@ async function getStickyDisk(
   // Host budget, in whole seconds, for trimming the filesystem before unmount
   // at commit; 0 when the host has not enabled the trim.
   fstrim_timeout_secs: number;
+  // Host `fstrim -m` value in bytes; 0 means the fstrim default.
+  fstrim_min_extent_bytes: number;
 }> {
   const client = createStickyDiskClient();
 
@@ -60,6 +62,9 @@ async function getStickyDisk(
       ? response.commitEarlyDenyReason || "denied by host policy"
       : "",
     fstrim_timeout_secs: parseFstrimTimeoutSecs(response.fstrimTimeoutSecs),
+    fstrim_min_extent_bytes: parseFstrimMinExtentBytes(
+      response.fstrimMinExtentBytes,
+    ),
   };
 }
 
@@ -217,6 +222,7 @@ async function mountStickyDisk(
     device: string;
     commit_early_deny_reason: string;
     fstrim_timeout_secs: number;
+    fstrim_min_extent_bytes: number;
   };
   try {
     stickyDiskResponse = await getStickyDisk(stickyDiskKey, commitIntent, {
@@ -233,6 +239,10 @@ async function mountStickyDisk(
   saveState(
     "STICKYDISK_FSTRIM_TIMEOUT_SECS",
     String(stickyDiskResponse.fstrim_timeout_secs),
+  );
+  saveState(
+    "STICKYDISK_FSTRIM_MIN_EXTENT_BYTES",
+    String(stickyDiskResponse.fstrim_min_extent_bytes),
   );
   const commitEarlyDenyReason = stickyDiskResponse.commit_early_deny_reason;
   if (commitEarlyDenyReason !== "") {

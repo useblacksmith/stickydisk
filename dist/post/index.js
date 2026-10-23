@@ -36263,6 +36263,7 @@ const GetStickyDiskResponse = /*@__PURE__*/ proto3.makeMessageType(
     { no: 6, name: "commit_early_deny", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
     { no: 7, name: "commit_early_deny_reason", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 8, name: "fstrim_timeout_secs", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 9, name: "fstrim_min_extent_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
   ],
 );
 
@@ -36875,6 +36876,7 @@ const stickydisk_pb_GetStickyDiskResponse = proto3.makeMessageType(
     { no: 6, name: "commit_early_deny", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
     { no: 7, name: "commit_early_deny_reason", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 8, name: "fstrim_timeout_secs", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 9, name: "fstrim_min_extent_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
   ],
 );
 
@@ -37471,6 +37473,18 @@ function parseFstrimTimeoutSecs(value) {
         return 0;
     return Math.floor(n);
 }
+/**
+ * Parses the host's `fstrim --minimum` value
+ * (GetStickyDiskResponse.fstrim_min_extent_bytes, a protobuf int64 that
+ * arrives as a bigint, or the string read back from action state) into whole
+ * bytes. Anything unusable is 0, which leaves fstrim at its default.
+ */
+function parseFstrimMinExtentBytes(value) {
+    const n = typeof value === "bigint" ? Number(value) : Number(value !== null && value !== void 0 ? value : 0);
+    if (!Number.isFinite(n) || n <= 0)
+        return 0;
+    return Math.floor(n);
+}
 const TIMEOUT_EXIT_CODE = 124;
 /** Byte count from `fstrim -v` output such as `/mnt: 1 GiB (1073741824 bytes) trimmed`. */
 function parseTrimmedBytes(fstrimOutput) {
@@ -37480,10 +37494,12 @@ function parseTrimmedBytes(fstrimOutput) {
 /**
  * Best-effort `fstrim` of the filesystem at `mountPoint`, so blocks freed
  * during the job are discarded before the device is unmounted and committed.
+ * A positive `minExtentBytes` is passed as `fstrim -m`: free extents smaller
+ * than that are left alone.
  * Never throws: a missing binary, a filesystem or device without discard
  * support, and the timeout all come back as a non-`trimmed` outcome.
  */
-async function trimFilesystem(mountPoint, timeoutSecs, run = runCommand) {
+async function trimFilesystem(mountPoint, timeoutSecs, minExtentBytes = 0, run = runCommand) {
     const start = Date.now();
     try {
         const { stdout } = await run("timeout", [
@@ -37491,6 +37507,7 @@ async function trimFilesystem(mountPoint, timeoutSecs, run = runCommand) {
             "sudo",
             "fstrim",
             "-v",
+            ...(minExtentBytes > 0 ? ["-m", String(minExtentBytes)] : []),
             "--",
             mountPoint,
         ]);
@@ -37737,6 +37754,7 @@ async function run() {
     const wasFormatted = (0,core.getState)("STICKYDISK_WAS_FORMATTED");
     const commitEarlyDenyReason = (0,core.getState)("STICKYDISK_COMMIT_EARLY_DENY_REASON");
     const fstrimTimeoutSecs = parseFstrimTimeoutSecs((0,core.getState)("STICKYDISK_FSTRIM_TIMEOUT_SECS"));
+    const fstrimMinExtentBytes = parseFstrimMinExtentBytes((0,core.getState)("STICKYDISK_FSTRIM_MIN_EXTENT_BYTES"));
     const stickyDiskError = (0,core.getState)("STICKYDISK_ERROR") === "true";
     if (!stickyDiskPath) {
         core.debug("No STICKYDISK_PATH in state, skipping unmount");
@@ -37817,7 +37835,7 @@ async function run() {
             failureCheck &&
             !failureCheck.error &&
             !failureCheck.hasFailures) {
-            const trim = await trimFilesystem(stickyDiskPath, fstrimTimeoutSecs);
+            const trim = await trimFilesystem(stickyDiskPath, fstrimTimeoutSecs, fstrimMinExtentBytes);
             const trimmed = trim.trimmedBytes === null ? "" : `, ${formatBytes(trim.trimmedBytes)}`;
             const detail = trim.detail ? `: ${trim.detail}` : "";
             core.info(`fstrim ${stickyDiskPath}: ${trim.outcome} in ${trim.durationMs}ms${trimmed}${detail}`);

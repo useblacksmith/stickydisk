@@ -27490,6 +27490,18 @@ function parseFstrimTimeoutSecs(value) {
         return 0;
     return Math.floor(n);
 }
+/**
+ * Parses the host's `fstrim --minimum` value
+ * (GetStickyDiskResponse.fstrim_min_extent_bytes, a protobuf int64 that
+ * arrives as a bigint, or the string read back from action state) into whole
+ * bytes. Anything unusable is 0, which leaves fstrim at its default.
+ */
+function parseFstrimMinExtentBytes(value) {
+    const n = typeof value === "bigint" ? Number(value) : Number(value !== null && value !== void 0 ? value : 0);
+    if (!Number.isFinite(n) || n <= 0)
+        return 0;
+    return Math.floor(n);
+}
 const TIMEOUT_EXIT_CODE = 124;
 /** Byte count from `fstrim -v` output such as `/mnt: 1 GiB (1073741824 bytes) trimmed`. */
 function parseTrimmedBytes(fstrimOutput) {
@@ -27499,10 +27511,12 @@ function parseTrimmedBytes(fstrimOutput) {
 /**
  * Best-effort `fstrim` of the filesystem at `mountPoint`, so blocks freed
  * during the job are discarded before the device is unmounted and committed.
+ * A positive `minExtentBytes` is passed as `fstrim -m`: free extents smaller
+ * than that are left alone.
  * Never throws: a missing binary, a filesystem or device without discard
  * support, and the timeout all come back as a non-`trimmed` outcome.
  */
-async function trimFilesystem(mountPoint, timeoutSecs, run = runCommand) {
+async function trimFilesystem(mountPoint, timeoutSecs, minExtentBytes = 0, run = runCommand) {
     const start = Date.now();
     try {
         const { stdout } = await run("timeout", [
@@ -27510,6 +27524,7 @@ async function trimFilesystem(mountPoint, timeoutSecs, run = runCommand) {
             "sudo",
             "fstrim",
             "-v",
+            ...(minExtentBytes > 0 ? ["-m", String(minExtentBytes)] : []),
             "--",
             mountPoint,
         ]);
@@ -36387,6 +36402,7 @@ const GetStickyDiskResponse = /*@__PURE__*/ proto3.makeMessageType(
     { no: 6, name: "commit_early_deny", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
     { no: 7, name: "commit_early_deny_reason", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 8, name: "fstrim_timeout_secs", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 9, name: "fstrim_min_extent_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
   ],
 );
 
@@ -36999,6 +37015,7 @@ const stickydisk_pb_GetStickyDiskResponse = proto3.makeMessageType(
     { no: 6, name: "commit_early_deny", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
     { no: 7, name: "commit_early_deny_reason", kind: "scalar", T: 9 /* ScalarType.STRING */ },
     { no: 8, name: "fstrim_timeout_secs", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 9, name: "fstrim_min_extent_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
   ],
 );
 
@@ -37439,6 +37456,7 @@ async function getStickyDisk(stickyDiskKey, commitIntent, options) {
             ? response.commitEarlyDenyReason || "denied by host policy"
             : "",
         fstrim_timeout_secs: parseFstrimTimeoutSecs(response.fstrimTimeoutSecs),
+        fstrim_min_extent_bytes: parseFstrimMinExtentBytes(response.fstrimMinExtentBytes),
     };
 }
 // The VM agent's sticky-disk response can arrive before the guest kernel has
@@ -37565,6 +37583,7 @@ async function mountStickyDisk(stickyDiskKey, commitIntent, stickyDiskPath, sign
     // failure against the disk the host exposed.
     (0,core.saveState)("STICKYDISK_EXPOSE_ID", exposeId);
     (0,core.saveState)("STICKYDISK_FSTRIM_TIMEOUT_SECS", String(stickyDiskResponse.fstrim_timeout_secs));
+    (0,core.saveState)("STICKYDISK_FSTRIM_MIN_EXTENT_BYTES", String(stickyDiskResponse.fstrim_min_extent_bytes));
     const commitEarlyDenyReason = stickyDiskResponse.commit_early_deny_reason;
     if (commitEarlyDenyReason !== "") {
         core.notice(`Sticky disk changes will not be committed for this job (${commitEarlyDenyReason}). The sticky disk is used as-is and any changes to it are discarded.`);

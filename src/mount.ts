@@ -99,6 +99,18 @@ export function parseFstrimTimeoutSecs(value: unknown): number {
   return Math.floor(n);
 }
 
+/**
+ * Parses the host's `fstrim --minimum` value
+ * (GetStickyDiskResponse.fstrim_min_extent_bytes, a protobuf int64 that
+ * arrives as a bigint, or the string read back from action state) into whole
+ * bytes. Anything unusable is 0, which leaves fstrim at its default.
+ */
+export function parseFstrimMinExtentBytes(value: unknown): number {
+  const n = typeof value === "bigint" ? Number(value) : Number(value ?? 0);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.floor(n);
+}
+
 const TIMEOUT_EXIT_CODE = 124;
 
 export interface TrimResult {
@@ -119,12 +131,15 @@ export function parseTrimmedBytes(fstrimOutput: string): number | null {
 /**
  * Best-effort `fstrim` of the filesystem at `mountPoint`, so blocks freed
  * during the job are discarded before the device is unmounted and committed.
+ * A positive `minExtentBytes` is passed as `fstrim -m`: free extents smaller
+ * than that are left alone.
  * Never throws: a missing binary, a filesystem or device without discard
  * support, and the timeout all come back as a non-`trimmed` outcome.
  */
 export async function trimFilesystem(
   mountPoint: string,
   timeoutSecs: number,
+  minExtentBytes = 0,
   run: CommandRunner = runCommand,
 ): Promise<TrimResult> {
   const start = Date.now();
@@ -134,6 +149,7 @@ export async function trimFilesystem(
       "sudo",
       "fstrim",
       "-v",
+      ...(minExtentBytes > 0 ? ["-m", String(minExtentBytes)] : []),
       "--",
       mountPoint,
     ]);

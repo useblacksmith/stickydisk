@@ -9,6 +9,7 @@ import { StepFailureCheck, checkPreviousStepFailures } from "./step-checker";
 import {
   findMountedDevice,
   getFilesystemUsedField,
+  parseFstrimMinExtentBytes,
   parseFstrimTimeoutSecs,
   trimFilesystem,
   unmount,
@@ -192,6 +193,9 @@ async function run(): Promise<void> {
   const fstrimTimeoutSecs = parseFstrimTimeoutSecs(
     getState("STICKYDISK_FSTRIM_TIMEOUT_SECS"),
   );
+  const fstrimMinExtentBytes = parseFstrimMinExtentBytes(
+    getState("STICKYDISK_FSTRIM_MIN_EXTENT_BYTES"),
+  );
   const stickyDiskError = getState("STICKYDISK_ERROR") === "true";
 
   if (!stickyDiskPath) {
@@ -290,7 +294,11 @@ async function run(): Promise<void> {
       !failureCheck.error &&
       !failureCheck.hasFailures
     ) {
-      const trim = await trimFilesystem(stickyDiskPath, fstrimTimeoutSecs);
+      const trim = await trimFilesystem(
+        stickyDiskPath,
+        fstrimTimeoutSecs,
+        fstrimMinExtentBytes,
+      );
       const trimmed =
         trim.trimmedBytes === null ? "" : `, ${formatBytes(trim.trimmedBytes)}`;
       const detail = trim.detail ? `: ${trim.detail}` : "";

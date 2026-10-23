@@ -4,6 +4,7 @@ import {
   findMountedDevice,
   getFilesystemUsedField,
   parseMountSource,
+  parseFstrimMinExtentBytes,
   parseFstrimTimeoutSecs,
   parseTrimmedBytes,
   trimFilesystem,
@@ -74,7 +75,7 @@ describe("mount helpers", () => {
       timeout: { stdout: `${hostilePath}: 1 GiB (1073741824 bytes) trimmed\n` },
     });
 
-    const result = await trimFilesystem(hostilePath, 5, run);
+    const result = await trimFilesystem(hostilePath, 5, 0, run);
 
     expect(calls).toEqual([
       {
@@ -85,6 +86,29 @@ describe("mount helpers", () => {
     expect(result.outcome).toBe("trimmed");
     expect(result.trimmedBytes).toBe(1073741824);
     expect(result.detail).toBe("");
+  });
+
+  it("passes a positive minimum extent as fstrim -m and omits it otherwise", async () => {
+    const { run, calls } = recordingRunner({
+      timeout: { stdout: `${hostilePath}: 0 B (0 bytes) trimmed\n` },
+    });
+
+    await trimFilesystem(hostilePath, 5, 4194304, run);
+    await trimFilesystem(hostilePath, 5, 0, run);
+
+    expect(calls.map((c) => c.args)).toEqual([
+      ["5", "sudo", "fstrim", "-v", "-m", "4194304", "--", hostilePath],
+      ["5", "sudo", "fstrim", "-v", "--", hostilePath],
+    ]);
+  });
+
+  it("parses the host fstrim minimum extent from the RPC bigint or saved state", () => {
+    expect(parseFstrimMinExtentBytes(BigInt(65536))).toBe(65536);
+    expect(parseFstrimMinExtentBytes("4194304")).toBe(4194304);
+    expect(parseFstrimMinExtentBytes(BigInt(0))).toBe(0);
+    expect(parseFstrimMinExtentBytes(-1)).toBe(0);
+    expect(parseFstrimMinExtentBytes("")).toBe(0);
+    expect(parseFstrimMinExtentBytes(undefined)).toBe(0);
   });
 
   it("parses the host fstrim budget from the RPC bigint or saved state", () => {
@@ -119,6 +143,7 @@ describe("mount helpers", () => {
       await trimFilesystem(
         "/mnt/cache",
         5,
+        0,
         recordingRunner({ timeout: unsupported }).run,
       ),
     ).toMatchObject({
@@ -135,6 +160,7 @@ describe("mount helpers", () => {
       await trimFilesystem(
         "/mnt/cache",
         5,
+        0,
         recordingRunner({ timeout: timedOut }).run,
       ),
     ).toMatchObject({
@@ -150,6 +176,7 @@ describe("mount helpers", () => {
       await trimFilesystem(
         "/mnt/cache",
         5,
+        0,
         recordingRunner({ timeout: missing }).run,
       ),
     ).toMatchObject({
