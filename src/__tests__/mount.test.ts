@@ -1,5 +1,4 @@
 import { tmpdir } from "os";
-import { proto3 } from "@bufbuild/protobuf";
 import {
   CommandRunner,
   findMountedDevice,
@@ -9,8 +8,6 @@ import {
   parseTrimmedBytes,
   trimFilesystem,
   unmount,
-  decodeVarint,
-  fstrimTimeoutSecsFrom,
 } from "../mount";
 
 // A path a workflow could feed through the `path` input; every character is
@@ -175,45 +172,3 @@ describe("mount helpers", () => {
   });
 });
 
-describe("fstrimTimeoutSecsFrom", () => {
-  it("prefers the typed field when the proto package knows it", () => {
-    expect(
-      fstrimTimeoutSecsFrom({ fstrimTimeoutSecs: BigInt(7) }, [
-        { no: 8, wireType: 0, data: new Uint8Array([5]) },
-      ]),
-    ).toBe(7);
-  });
-
-  it("falls back to unknown field 8 from an older proto package", () => {
-    expect(
-      fstrimTimeoutSecsFrom({}, [
-        { no: 3, wireType: 2, data: new Uint8Array([1, 2]) },
-        { no: 8, wireType: 0, data: new Uint8Array([0x80, 0x01]) },
-      ]),
-    ).toBe(128);
-    expect(
-      fstrimTimeoutSecsFrom({}, [
-        { no: 8, wireType: 2, data: new Uint8Array([5]) },
-      ]),
-    ).toBe(0);
-    expect(fstrimTimeoutSecsFrom({}, [])).toBe(0);
-  });
-
-  it("reads the field off a real response decoded by the bundled package", () => {
-    // field 8, varint wire type => tag 0x40; value 5
-    // A message type that predates the field, like a bundled proto package
-    // built before fstrim_timeout_secs existed.
-    const OldResponse = proto3.makeMessageType("test.OldResponse", []);
-    const response = OldResponse.fromBinary(new Uint8Array([0x40, 0x05]));
-    const unknown = response.getType().runtime.bin.listUnknownFields(response);
-    expect(fstrimTimeoutSecsFrom(response, unknown)).toBe(5);
-  });
-
-  it("decodes varints and rejects malformed ones", () => {
-    expect(decodeVarint(new Uint8Array([0]))).toBe(0);
-    expect(decodeVarint(new Uint8Array([0xac, 0x02]))).toBe(300);
-    expect(decodeVarint(new Uint8Array([0x80]))).toBeNull();
-    expect(decodeVarint(new Uint8Array([0x05, 0x05]))).toBeNull();
-    expect(decodeVarint(new Uint8Array([]))).toBeNull();
-  });
-});
