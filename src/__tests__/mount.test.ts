@@ -171,4 +171,3 @@ describe("mount helpers", () => {
     expect(await findMountedDevice("/")).not.toBeNull();
   });
 });
-
