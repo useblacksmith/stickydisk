@@ -37498,8 +37498,8 @@ function parseTrimmedBytes(fstrimOutput) {
  * than that are left alone.
  * `timeout` runs under sudo so it has the privilege to stop root's fstrim;
  * otherwise fstrim would outlive its budget and keep the mount busy.
- * Never throws: a missing binary, a filesystem or device without discard
- * support, and the timeout all come back as a non-`trimmed` outcome.
+ * Never throws: the timeout is `timeout`, a missing binary or a device
+ * without discard support is `unsupported`, anything else is `failed`.
  */
 async function trimFilesystem(mountPoint, timeoutSecs, minExtentBytes = 0, run = runCommand) {
     const start = Date.now();
@@ -37514,7 +37514,7 @@ async function trimFilesystem(mountPoint, timeoutSecs, minExtentBytes = 0, run =
             mountPoint,
         ]);
         return {
-            outcome: "trimmed",
+            outcome: "ok",
             durationMs: Date.now() - start,
             trimmedBytes: parseTrimmedBytes(stdout),
             detail: "",
@@ -37525,7 +37525,7 @@ async function trimFilesystem(mountPoint, timeoutSecs, minExtentBytes = 0, run =
         const { code, stderr } = (error !== null && error !== void 0 ? error : {});
         if (code === TIMEOUT_EXIT_CODE) {
             return {
-                outcome: "timed_out",
+                outcome: "timeout",
                 durationMs,
                 trimmedBytes: null,
                 detail: `timed out after ${timeoutSecs}s`,
@@ -37534,8 +37534,22 @@ async function trimFilesystem(mountPoint, timeoutSecs, minExtentBytes = 0, run =
         const stderrText = typeof stderr === "string" ? stderr.trim() : "";
         const detail = stderrText ||
             (error instanceof Error ? error.message : String(error)).trim();
-        return { outcome: "failed", durationMs, trimmedBytes: null, detail };
+        return {
+            outcome: isUnsupported(code, detail) ? "unsupported" : "failed",
+            durationMs,
+            trimmedBytes: null,
+            detail,
+        };
     }
+}
+/** Discard not negotiated by the hypervisor (EOPNOTSUPP) or no fstrim binary. */
+function isUnsupported(code, detail) {
+    if (code === 127 || code === "ENOENT")
+        return true;
+    const msg = detail.toLowerCase();
+    return (msg.includes("not supported") ||
+        msg.includes("command not found") ||
+        msg.includes("no such file or directory"));
 }
 
 ;// CONCATENATED MODULE: ./src/mount-report.ts

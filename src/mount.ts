@@ -113,12 +113,15 @@ export function parseFstrimMinExtentBytes(value: unknown): number {
 
 const TIMEOUT_EXIT_CODE = 124;
 
+/** Same vocabulary as setup-docker-builder and the agent's FstrimOutcome. */
+export type TrimOutcome = "ok" | "timeout" | "unsupported" | "failed";
+
 export interface TrimResult {
-  outcome: "trimmed" | "timed_out" | "failed";
+  outcome: TrimOutcome;
   durationMs: number;
   /** Byte count from `fstrim -v`, when the output carried one. */
   trimmedBytes: number | null;
-  /** Error or stderr text for a non-`trimmed` outcome. */
+  /** Error or stderr text for a non-`ok` outcome. */
   detail: string;
 }
 
@@ -135,8 +138,8 @@ export function parseTrimmedBytes(fstrimOutput: string): number | null {
  * than that are left alone.
  * `timeout` runs under sudo so it has the privilege to stop root's fstrim;
  * otherwise fstrim would outlive its budget and keep the mount busy.
- * Never throws: a missing binary, a filesystem or device without discard
- * support, and the timeout all come back as a non-`trimmed` outcome.
+ * Never throws: the timeout is `timeout`, a missing binary or a device
+ * without discard support is `unsupported`, anything else is `failed`.
  */
 export async function trimFilesystem(
   mountPoint: string,
@@ -156,7 +159,7 @@ export async function trimFilesystem(
       mountPoint,
     ]);
     return {
-      outcome: "trimmed",
+      outcome: "ok",
       durationMs: Date.now() - start,
       trimmedBytes: parseTrimmedBytes(stdout),
       detail: "",
@@ -169,7 +172,7 @@ export async function trimFilesystem(
     };
     if (code === TIMEOUT_EXIT_CODE) {
       return {
-        outcome: "timed_out",
+        outcome: "timeout",
         durationMs,
         trimmedBytes: null,
         detail: `timed out after ${timeoutSecs}s`,
@@ -179,6 +182,22 @@ export async function trimFilesystem(
     const detail =
       stderrText ||
       (error instanceof Error ? error.message : String(error)).trim();
-    return { outcome: "failed", durationMs, trimmedBytes: null, detail };
+    return {
+      outcome: isUnsupported(code, detail) ? "unsupported" : "failed",
+      durationMs,
+      trimmedBytes: null,
+      detail,
+    };
   }
+}
+
+/** Discard not negotiated by the hypervisor (EOPNOTSUPP) or no fstrim binary. */
+function isUnsupported(code: unknown, detail: string): boolean {
+  if (code === 127 || code === "ENOENT") return true;
+  const msg = detail.toLowerCase();
+  return (
+    msg.includes("not supported") ||
+    msg.includes("command not found") ||
+    msg.includes("no such file or directory")
+  );
 }

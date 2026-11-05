@@ -83,7 +83,7 @@ describe("mount helpers", () => {
         args: ["timeout", "5", "fstrim", "-v", "--", hostilePath],
       },
     ]);
-    expect(result.outcome).toBe("trimmed");
+    expect(result.outcome).toBe("ok");
     expect(result.trimmedBytes).toBe(1073741824);
     expect(result.detail).toBe("");
   });
@@ -147,7 +147,7 @@ describe("mount helpers", () => {
         recordingRunner({ sudo: unsupported }).run,
       ),
     ).toMatchObject({
-      outcome: "failed",
+      outcome: "unsupported",
       trimmedBytes: null,
       detail: "fstrim: /mnt/cache: the discard operation is not supported",
     });
@@ -164,7 +164,7 @@ describe("mount helpers", () => {
         recordingRunner({ sudo: timedOut }).run,
       ),
     ).toMatchObject({
-      outcome: "timed_out",
+      outcome: "timeout",
       trimmedBytes: null,
       detail: "timed out after 5s",
     });
@@ -180,7 +180,7 @@ describe("mount helpers", () => {
         recordingRunner({ sudo: missing }).run,
       ),
     ).toMatchObject({
-      outcome: "failed",
+      outcome: "unsupported",
       detail: "spawn timeout ENOENT",
     });
   });
