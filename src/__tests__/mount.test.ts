@@ -4,6 +4,10 @@ import {
   findMountedDevice,
   getFilesystemUsedField,
   parseMountSource,
+  parseFstrimMinExtentBytes,
+  parseFstrimTimeoutSecs,
+  parseTrimmedBytes,
+  trimFilesystem,
   unmount,
 } from "../mount";
 
@@ -64,6 +68,121 @@ describe("mount helpers", () => {
     });
     expect(await findMountedDevice("/mnt/cache", run)).toBe("/dev/vdb");
     expect(await findMountedDevice("/mnt/cache/nested", run)).toBeNull();
+  });
+
+  it("runs fstrim under timeout and sudo with the path as one argv element", async () => {
+    const { run, calls } = recordingRunner({
+      timeout: { stdout: `${hostilePath}: 1 GiB (1073741824 bytes) trimmed\n` },
+    });
+
+    const result = await trimFilesystem(hostilePath, 5, 0, run);
+
+    expect(calls).toEqual([
+      {
+        file: "timeout",
+        args: ["5", "sudo", "fstrim", "-v", "--", hostilePath],
+      },
+    ]);
+    expect(result.outcome).toBe("trimmed");
+    expect(result.trimmedBytes).toBe(1073741824);
+    expect(result.detail).toBe("");
+  });
+
+  it("passes a positive minimum extent as fstrim -m and omits it otherwise", async () => {
+    const { run, calls } = recordingRunner({
+      timeout: { stdout: `${hostilePath}: 0 B (0 bytes) trimmed\n` },
+    });
+
+    await trimFilesystem(hostilePath, 5, 4194304, run);
+    await trimFilesystem(hostilePath, 5, 0, run);
+
+    expect(calls.map((c) => c.args)).toEqual([
+      ["5", "sudo", "fstrim", "-v", "-m", "4194304", "--", hostilePath],
+      ["5", "sudo", "fstrim", "-v", "--", hostilePath],
+    ]);
+  });
+
+  it("parses the host fstrim minimum extent from the RPC bigint or saved state", () => {
+    expect(parseFstrimMinExtentBytes(BigInt(65536))).toBe(65536);
+    expect(parseFstrimMinExtentBytes("4194304")).toBe(4194304);
+    expect(parseFstrimMinExtentBytes(BigInt(0))).toBe(0);
+    expect(parseFstrimMinExtentBytes(-1)).toBe(0);
+    expect(parseFstrimMinExtentBytes("")).toBe(0);
+    expect(parseFstrimMinExtentBytes(undefined)).toBe(0);
+  });
+
+  it("parses the host fstrim budget from the RPC bigint or saved state", () => {
+    expect(parseFstrimTimeoutSecs(BigInt(5))).toBe(5);
+    expect(parseFstrimTimeoutSecs(5)).toBe(5);
+    expect(parseFstrimTimeoutSecs("5")).toBe(5);
+    expect(parseFstrimTimeoutSecs("2.9")).toBe(2);
+    expect(parseFstrimTimeoutSecs(BigInt(0))).toBe(0);
+    expect(parseFstrimTimeoutSecs(-1)).toBe(0);
+    expect(parseFstrimTimeoutSecs("")).toBe(0);
+    expect(parseFstrimTimeoutSecs(undefined)).toBe(0);
+    expect(parseFstrimTimeoutSecs("nope")).toBe(0);
+  });
+
+  it("parses the byte count from fstrim -v across util-linux output shapes", () => {
+    expect(parseTrimmedBytes("/mnt: 0 B (0 bytes) trimmed\n")).toBe(0);
+    expect(
+      parseTrimmedBytes(
+        "/mnt: 1.2 GiB (1288490188 bytes) trimmed on /dev/vdb\n",
+      ),
+    ).toBe(1288490188);
+    expect(parseTrimmedBytes("")).toBeNull();
+    expect(parseTrimmedBytes("fstrim: /mnt: FITRIM ioctl failed")).toBeNull();
+  });
+
+  it("never throws from trimFilesystem and classifies the failure", async () => {
+    const unsupported = Object.assign(new Error("Command failed"), {
+      code: 1,
+      stderr: "fstrim: /mnt/cache: the discard operation is not supported\n",
+    });
+    expect(
+      await trimFilesystem(
+        "/mnt/cache",
+        5,
+        0,
+        recordingRunner({ timeout: unsupported }).run,
+      ),
+    ).toMatchObject({
+      outcome: "failed",
+      trimmedBytes: null,
+      detail: "fstrim: /mnt/cache: the discard operation is not supported",
+    });
+
+    const timedOut = Object.assign(new Error("Command failed"), {
+      code: 124,
+      stderr: "",
+    });
+    expect(
+      await trimFilesystem(
+        "/mnt/cache",
+        5,
+        0,
+        recordingRunner({ timeout: timedOut }).run,
+      ),
+    ).toMatchObject({
+      outcome: "timed_out",
+      trimmedBytes: null,
+      detail: "timed out after 5s",
+    });
+
+    const missing = Object.assign(new Error("spawn timeout ENOENT"), {
+      code: "ENOENT",
+    });
+    expect(
+      await trimFilesystem(
+        "/mnt/cache",
+        5,
+        0,
+        recordingRunner({ timeout: missing }).run,
+      ),
+    ).toMatchObject({
+      outcome: "failed",
+      detail: "spawn timeout ENOENT",
+    });
   });
 
   const itOnLinux = process.platform === "linux" ? it : it.skip;
