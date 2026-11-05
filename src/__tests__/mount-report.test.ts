@@ -18,6 +18,9 @@ const report: MountReport = {
   format_ms: 900,
   mount_ms: 25,
   unmount_ms: 130,
+  fstrim_outcome: "ok",
+  fstrim_ms: 40,
+  fstrim_bytes: 1073741824,
 };
 
 interface Received {

@@ -86,3 +86,118 @@ export async function unmount(
 ): Promise<void> {
   await run("sudo", ["umount", "--", mountPoint]);
 }
+
+/**
+ * Parses the host's fstrim budget (GetStickyDiskResponse.fstrim_timeout_secs,
+ * a protobuf int64 that arrives as a bigint, or the string the post step reads
+ * back from action state) into whole seconds. Anything unusable is 0, which
+ * disables the trim.
+ */
+export function parseFstrimTimeoutSecs(value: unknown): number {
+  const n = typeof value === "bigint" ? Number(value) : Number(value ?? 0);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.floor(n);
+}
+
+/**
+ * Parses the host's `fstrim --minimum` value
+ * (GetStickyDiskResponse.fstrim_min_extent_bytes, a protobuf int64 that
+ * arrives as a bigint, or the string read back from action state) into whole
+ * bytes. Anything unusable is 0, which leaves fstrim at its default.
+ */
+export function parseFstrimMinExtentBytes(value: unknown): number {
+  const n = typeof value === "bigint" ? Number(value) : Number(value ?? 0);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.floor(n);
+}
+
+const TIMEOUT_EXIT_CODE = 124;
+
+/** Same vocabulary as setup-docker-builder and the agent's FstrimOutcome. */
+export type TrimOutcome = "ok" | "timeout" | "unsupported" | "failed";
+
+export interface TrimResult {
+  outcome: TrimOutcome;
+  durationMs: number;
+  /** Byte count from `fstrim -v`, when the output carried one. */
+  trimmedBytes: number | null;
+  /** Error or stderr text for a non-`ok` outcome. */
+  detail: string;
+}
+
+/** Byte count from `fstrim -v` output such as `/mnt: 1 GiB (1073741824 bytes) trimmed`. */
+export function parseTrimmedBytes(fstrimOutput: string): number | null {
+  const match = fstrimOutput.match(/\((\d+) bytes\) trimmed/);
+  return match ? parseInt(match[1], 10) : null;
+}
+
+/**
+ * Best-effort `fstrim` of the filesystem at `mountPoint`, so blocks freed
+ * during the job are discarded before the device is unmounted and committed.
+ * A positive `minExtentBytes` is passed as `fstrim -m`: free extents smaller
+ * than that are left alone.
+ * `timeout` runs under sudo so it has the privilege to stop root's fstrim;
+ * otherwise fstrim would outlive its budget and keep the mount busy.
+ * Never throws: the timeout is `timeout`, a missing binary or a device
+ * without discard support is `unsupported`, anything else is `failed`.
+ */
+export async function trimFilesystem(
+  mountPoint: string,
+  timeoutSecs: number,
+  minExtentBytes = 0,
+  run: CommandRunner = runCommand,
+): Promise<TrimResult> {
+  const start = Date.now();
+  try {
+    const { stdout } = await run("sudo", [
+      "timeout",
+      String(timeoutSecs),
+      "fstrim",
+      "-v",
+      ...(minExtentBytes > 0 ? ["-m", String(minExtentBytes)] : []),
+      "--",
+      mountPoint,
+    ]);
+    return {
+      outcome: "ok",
+      durationMs: Date.now() - start,
+      trimmedBytes: parseTrimmedBytes(stdout),
+      detail: "",
+    };
+  } catch (error) {
+    const durationMs = Date.now() - start;
+    const { code, stderr } = (error ?? {}) as {
+      code?: unknown;
+      stderr?: unknown;
+    };
+    if (code === TIMEOUT_EXIT_CODE) {
+      return {
+        outcome: "timeout",
+        durationMs,
+        trimmedBytes: null,
+        detail: `timed out after ${timeoutSecs}s`,
+      };
+    }
+    const stderrText = typeof stderr === "string" ? stderr.trim() : "";
+    const detail =
+      stderrText ||
+      (error instanceof Error ? error.message : String(error)).trim();
+    return {
+      outcome: isUnsupported(code, detail) ? "unsupported" : "failed",
+      durationMs,
+      trimmedBytes: null,
+      detail,
+    };
+  }
+}
+
+/** Discard not negotiated by the hypervisor (EOPNOTSUPP) or no fstrim binary. */
+function isUnsupported(code: unknown, detail: string): boolean {
+  if (code === 127 || code === "ENOENT") return true;
+  const msg = detail.toLowerCase();
+  return (
+    msg.includes("not supported") ||
+    msg.includes("command not found") ||
+    msg.includes("no such file or directory")
+  );
+}
