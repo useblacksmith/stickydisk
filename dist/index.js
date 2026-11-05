@@ -27412,10 +27412,147 @@ var __webpack_exports__ = {};
 
 // EXTERNAL MODULE: ./node_modules/@actions/core/lib/core.js
 var core = __nccwpck_require__(7484);
-// EXTERNAL MODULE: external "util"
-var external_util_ = __nccwpck_require__(9023);
 // EXTERNAL MODULE: external "child_process"
 var external_child_process_ = __nccwpck_require__(5317);
+// EXTERNAL MODULE: external "util"
+var external_util_ = __nccwpck_require__(9023);
+;// CONCATENATED MODULE: ./src/mount.ts
+
+
+const execFileAsync = (0,external_util_.promisify)(external_child_process_.execFile);
+const runCommand = async (file, args) => {
+    const { stdout, stderr } = await execFileAsync(file, args);
+    return { stdout: String(stdout), stderr: String(stderr) };
+};
+/**
+ * Source device of a `mount` listing line whose target is exactly
+ * `mountPoint`, e.g. `/dev/vdb on /mnt/cache type ext4 (rw)` → `/dev/vdb`.
+ */
+function parseMountSource(mountOutput, mountPoint) {
+    for (const line of mountOutput.split("\n")) {
+        const match = line.match(/^(\S+) on (.+) type \S+ /);
+        if (match && match[2] === mountPoint) {
+            return match[1];
+        }
+    }
+    return null;
+}
+/** Device mounted at `mountPoint`, or null when nothing is mounted there. */
+async function findMountedDevice(mountPoint, run = runCommand) {
+    try {
+        const { stdout } = await run("findmnt", [
+            "-n",
+            "-o",
+            "SOURCE",
+            "--mountpoint",
+            mountPoint,
+        ]);
+        const device = stdout.trim();
+        if (device) {
+            return device;
+        }
+    }
+    catch {
+        // findmnt exits non-zero when the path is not a mount point; fall through
+        // to the `mount` listing in case findmnt itself is unavailable.
+    }
+    try {
+        const { stdout } = await run("mount", []);
+        return parseMountSource(stdout, mountPoint);
+    }
+    catch {
+        return null;
+    }
+}
+/** The `used` column of `df -B1` for `mountPoint`, as printed. */
+async function getFilesystemUsedField(mountPoint, run = runCommand) {
+    const { stdout } = await run("df", [
+        "-B1",
+        "--output=used",
+        "--",
+        mountPoint,
+    ]);
+    const lines = stdout.trim().split("\n");
+    return lines[lines.length - 1].trim();
+}
+async function unmount(mountPoint, run = runCommand) {
+    await run("sudo", ["umount", "--", mountPoint]);
+}
+/**
+ * Parses the host's fstrim budget (GetStickyDiskResponse.fstrim_timeout_secs,
+ * a protobuf int64 that arrives as a bigint, or the string the post step reads
+ * back from action state) into whole seconds. Anything unusable is 0, which
+ * disables the trim.
+ */
+function parseFstrimTimeoutSecs(value) {
+    const n = typeof value === "bigint" ? Number(value) : Number(value !== null && value !== void 0 ? value : 0);
+    if (!Number.isFinite(n) || n <= 0)
+        return 0;
+    return Math.floor(n);
+}
+/**
+ * Parses the host's `fstrim --minimum` value
+ * (GetStickyDiskResponse.fstrim_min_extent_bytes, a protobuf int64 that
+ * arrives as a bigint, or the string read back from action state) into whole
+ * bytes. Anything unusable is 0, which leaves fstrim at its default.
+ */
+function parseFstrimMinExtentBytes(value) {
+    const n = typeof value === "bigint" ? Number(value) : Number(value !== null && value !== void 0 ? value : 0);
+    if (!Number.isFinite(n) || n <= 0)
+        return 0;
+    return Math.floor(n);
+}
+const TIMEOUT_EXIT_CODE = 124;
+/** Byte count from `fstrim -v` output such as `/mnt: 1 GiB (1073741824 bytes) trimmed`. */
+function parseTrimmedBytes(fstrimOutput) {
+    const match = fstrimOutput.match(/\((\d+) bytes\) trimmed/);
+    return match ? parseInt(match[1], 10) : null;
+}
+/**
+ * Best-effort `fstrim` of the filesystem at `mountPoint`, so blocks freed
+ * during the job are discarded before the device is unmounted and committed.
+ * A positive `minExtentBytes` is passed as `fstrim -m`: free extents smaller
+ * than that are left alone.
+ * Never throws: a missing binary, a filesystem or device without discard
+ * support, and the timeout all come back as a non-`trimmed` outcome.
+ */
+async function trimFilesystem(mountPoint, timeoutSecs, minExtentBytes = 0, run = runCommand) {
+    const start = Date.now();
+    try {
+        const { stdout } = await run("timeout", [
+            String(timeoutSecs),
+            "sudo",
+            "fstrim",
+            "-v",
+            ...(minExtentBytes > 0 ? ["-m", String(minExtentBytes)] : []),
+            "--",
+            mountPoint,
+        ]);
+        return {
+            outcome: "trimmed",
+            durationMs: Date.now() - start,
+            trimmedBytes: parseTrimmedBytes(stdout),
+            detail: "",
+        };
+    }
+    catch (error) {
+        const durationMs = Date.now() - start;
+        const { code, stderr } = (error !== null && error !== void 0 ? error : {});
+        if (code === TIMEOUT_EXIT_CODE) {
+            return {
+                outcome: "timed_out",
+                durationMs,
+                trimmedBytes: null,
+                detail: `timed out after ${timeoutSecs}s`,
+            };
+        }
+        const stderrText = typeof stderr === "string" ? stderr.trim() : "";
+        const detail = stderrText ||
+            (error instanceof Error ? error.message : String(error)).trim();
+        return { outcome: "failed", durationMs, trimmedBytes: null, detail };
+    }
+}
+
 // EXTERNAL MODULE: external "path"
 var external_path_ = __nccwpck_require__(6928);
 ;// CONCATENATED MODULE: ./node_modules/@bufbuild/protobuf/dist/esm/service-type.js
@@ -36144,6 +36281,8 @@ const CommitSkipReason = /*@__PURE__*/ proto3.makeEnum(
     {no: 4, name: "COMMIT_SKIP_REASON_CLEANUP_ERROR", localName: "CLEANUP_ERROR"},
     {no: 5, name: "COMMIT_SKIP_REASON_AMBIGUOUS", localName: "AMBIGUOUS"},
     {no: 6, name: "COMMIT_SKIP_REASON_NO_EXPOSE", localName: "NO_EXPOSE"},
+    {no: 7, name: "COMMIT_SKIP_REASON_SERVER_DECLINED", localName: "SERVER_DECLINED"},
+    {no: 8, name: "COMMIT_SKIP_REASON_HOOK_SKIPPED", localName: "HOOK_SKIPPED"},
   ],
 );
 
@@ -36157,6 +36296,78 @@ const IntegrityOutcome = /*@__PURE__*/ proto3.makeEnum(
     {no: 1, name: "INTEGRITY_OUTCOME_PASSED", localName: "PASSED"},
     {no: 2, name: "INTEGRITY_OUTCOME_FAILED", localName: "FAILED"},
     {no: 3, name: "INTEGRITY_OUTCOME_SKIPPED", localName: "SKIPPED"},
+  ],
+);
+
+/**
+ * ContainerCacheSetupOutcome classifies how docker container cache
+ * activation ended for a job. Every non-ACTIVATED outcome falls back to
+ * uncached docker on the ephemeral root disk; the job still runs.
+ *
+ * @generated from enum stickydisk.v1.ContainerCacheSetupOutcome
+ */
+const ContainerCacheSetupOutcome = /*@__PURE__*/ proto3.makeEnum(
+  "stickydisk.v1.ContainerCacheSetupOutcome",
+  [
+    {no: 0, name: "CONTAINER_CACHE_SETUP_OUTCOME_UNSPECIFIED", localName: "UNSPECIFIED"},
+    {no: 1, name: "CONTAINER_CACHE_SETUP_OUTCOME_ACTIVATED", localName: "ACTIVATED"},
+    {no: 2, name: "CONTAINER_CACHE_SETUP_OUTCOME_DISABLED", localName: "DISABLED"},
+    {no: 3, name: "CONTAINER_CACHE_SETUP_OUTCOME_METADATA_UNAVAILABLE", localName: "METADATA_UNAVAILABLE"},
+    {no: 4, name: "CONTAINER_CACHE_SETUP_OUTCOME_EXPOSE_FAILED", localName: "EXPOSE_FAILED"},
+    {no: 5, name: "CONTAINER_CACHE_SETUP_OUTCOME_DEVICE_SIZE_TIMEOUT", localName: "DEVICE_SIZE_TIMEOUT"},
+    {no: 6, name: "CONTAINER_CACHE_SETUP_OUTCOME_MOUNT_FAILED", localName: "MOUNT_FAILED"},
+    {no: 7, name: "CONTAINER_CACHE_SETUP_OUTCOME_UNUSED", localName: "UNUSED"},
+  ],
+);
+
+/**
+ * ContainerCacheCommitReason is the structured reason behind the job's
+ * commit-or-elide decision for the container cache disk.
+ *
+ * @generated from enum stickydisk.v1.ContainerCacheCommitReason
+ */
+const ContainerCacheCommitReason = /*@__PURE__*/ proto3.makeEnum(
+  "stickydisk.v1.ContainerCacheCommitReason",
+  [
+    {no: 0, name: "CONTAINER_CACHE_COMMIT_REASON_UNSPECIFIED", localName: "UNSPECIFIED"},
+    {no: 1, name: "CONTAINER_CACHE_COMMIT_REASON_HASH_CHANGED", localName: "HASH_CHANGED"},
+    {no: 2, name: "CONTAINER_CACHE_COMMIT_REASON_NO_STORED_HASH", localName: "NO_STORED_HASH"},
+    {no: 3, name: "CONTAINER_CACHE_COMMIT_REASON_FORCED_MAINTENANCE", localName: "FORCED_MAINTENANCE"},
+    {no: 4, name: "CONTAINER_CACHE_COMMIT_REASON_ELIDE_MAINTENANCE_FAILED", localName: "ELIDE_MAINTENANCE_FAILED"},
+    {no: 5, name: "CONTAINER_CACHE_COMMIT_REASON_ELIDE_HASH_MATCH", localName: "ELIDE_HASH_MATCH"},
+    {no: 6, name: "CONTAINER_CACHE_COMMIT_REASON_HASH_UNAVAILABLE", localName: "HASH_UNAVAILABLE"},
+    {no: 7, name: "CONTAINER_CACHE_COMMIT_REASON_ELIDE_GC_TIMEOUT", localName: "ELIDE_GC_TIMEOUT"},
+  ],
+);
+
+/**
+ * ContainerCacheCommitPostOutcome is the result of the guest's
+ * /commit-docker-container POST to the host agent.
+ *
+ * @generated from enum stickydisk.v1.ContainerCacheCommitPostOutcome
+ */
+const ContainerCacheCommitPostOutcome = /*@__PURE__*/ proto3.makeEnum(
+  "stickydisk.v1.ContainerCacheCommitPostOutcome",
+  [
+    {no: 0, name: "CONTAINER_CACHE_COMMIT_POST_OUTCOME_UNSPECIFIED", localName: "UNSPECIFIED"},
+    {no: 1, name: "CONTAINER_CACHE_COMMIT_POST_OUTCOME_OK", localName: "OK"},
+    {no: 2, name: "CONTAINER_CACHE_COMMIT_POST_OUTCOME_FAILED", localName: "FAILED"},
+    {no: 3, name: "CONTAINER_CACHE_COMMIT_POST_OUTCOME_SKIPPED_MISSING_IDENTITY", localName: "SKIPPED_MISSING_IDENTITY"},
+  ],
+);
+
+/**
+ * ContainerServeClass classifies how a container's image was served.
+ *
+ * @generated from enum stickydisk.v1.ContainerServeClass
+ */
+const ContainerServeClass = /*@__PURE__*/ proto3.makeEnum(
+  "stickydisk.v1.ContainerServeClass",
+  [
+    {no: 0, name: "CONTAINER_SERVE_CLASS_UNSPECIFIED", localName: "UNSPECIFIED"},
+    {no: 1, name: "CONTAINER_SERVE_CLASS_CACHED", localName: "CACHED"},
+    {no: 2, name: "CONTAINER_SERVE_CLASS_PULLED_THIS_JOB", localName: "PULLED_THIS_JOB"},
+    {no: 3, name: "CONTAINER_SERVE_CLASS_UNKNOWN", localName: "UNKNOWN"},
   ],
 );
 
@@ -36190,6 +36401,8 @@ const GetStickyDiskResponse = /*@__PURE__*/ proto3.makeMessageType(
     { no: 5, name: "buildkitd_config", kind: "message", T: BuildkitdConfig },
     { no: 6, name: "commit_early_deny", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
     { no: 7, name: "commit_early_deny_reason", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 8, name: "fstrim_timeout_secs", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 9, name: "fstrim_min_extent_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
   ],
 );
 
@@ -36370,6 +36583,12 @@ const DockerJobLifecycle = /*@__PURE__*/ proto3.makeMessageType(
     { no: 19, name: "buildkitd_sigkill_used", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
     { no: 20, name: "history_export_timed_out", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
     { no: 21, name: "history_prune_failed", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 22, name: "timeline_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 23, name: "timeline_truncated", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 24, name: "history_export_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 25, name: "traces_dropped_oversize", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
+    { no: 26, name: "traces_dropped_payload_cap", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
+    { no: 27, name: "records_dropped_payload_cap", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
   ],
 );
 
@@ -36381,6 +36600,103 @@ const ReportDockerBuildResponse = /*@__PURE__*/ proto3.makeMessageType(
   () => [
     { no: 1, name: "docker_build_ids", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
   ],
+);
+
+/**
+ * ContainerStartSpan is one container's create/start/die timing from the
+ * docker events stream, the read-side cost signal of the cache: docker
+ * pulls before create, so create-to-start never includes registry time for
+ * either class; it is the time to bring the container up from the layers
+ * on disk. Cached layers are cold reads from the Ceph-backed cache disk,
+ * pulled ones were just written and are page-cache warm, so the
+ * cached-vs-pulled split isolates the cache disk's read tax (the avoided
+ * pull is sized separately from image bytes).
+ *
+ * @generated from message stickydisk.v1.ContainerStartSpan
+ */
+const ContainerStartSpan = /*@__PURE__*/ proto3.makeMessageType(
+  "stickydisk.v1.ContainerStartSpan",
+  () => [
+    { no: 1, name: "container_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "image_ref", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "image_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 4, name: "serve_class", kind: "enum", T: proto3.getEnumType(ContainerServeClass) },
+    { no: 5, name: "created_at_unix_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 6, name: "started_at_unix_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 7, name: "died_at_unix_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+  ],
+);
+
+/**
+ * DockerContainerCacheLifecycle is the per-job container cache lifecycle
+ * summary: activation, boot-path costs, manifest maintenance results,
+ * working-set composition, shutdown, and the commit funnel.
+ *
+ * @generated from message stickydisk.v1.DockerContainerCacheLifecycle
+ */
+const DockerContainerCacheLifecycle = /*@__PURE__*/ proto3.makeMessageType(
+  "stickydisk.v1.DockerContainerCacheLifecycle",
+  () => [
+    { no: 1, name: "setup_outcome", kind: "enum", T: proto3.getEnumType(ContainerCacheSetupOutcome) },
+    { no: 2, name: "setup_duration_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 3, name: "first_format", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 4, name: "daemon_start_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 5, name: "cleanup_duration_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 6, name: "manifest_update_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 7, name: "manifest_update_failed", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 8, name: "manifest_rebuilt", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 9, name: "manifest_migrated", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 10, name: "overlay_gc_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 11, name: "overlay_gc_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 12, name: "shutdown_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 13, name: "working_set_images", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 14, name: "working_set_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 15, name: "probation_images", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 16, name: "probation_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 17, name: "promoted_images", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 18, name: "promoted_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 19, name: "evicted_images", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 20, name: "evicted_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 21, name: "evicted_probation_images", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 22, name: "evicted_probation_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 23, name: "reclaimable_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 24, name: "total_refs", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 25, name: "pruned_refs", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 26, name: "material_prune", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 27, name: "fs_used_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 28, name: "fs_size_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 29, name: "image_layer_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 31, name: "commit_reason", kind: "enum", T: proto3.getEnumType(ContainerCacheCommitReason) },
+    { no: 32, name: "commit_post_outcome", kind: "enum", T: proto3.getEnumType(ContainerCacheCommitPostOutcome) },
+    { no: 33, name: "current_container_hash", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 34, name: "stored_container_hash", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 35, name: "carryover_probation_images", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 36, name: "planned_prunes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 37, name: "maintenance_budget_exhausted", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 38, name: "used_log_truncated", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+  ],
+);
+
+/**
+ * @generated from message stickydisk.v1.ReportDockerContainerCacheRequest
+ */
+const ReportDockerContainerCacheRequest = /*@__PURE__*/ proto3.makeMessageType(
+  "stickydisk.v1.ReportDockerContainerCacheRequest",
+  () => [
+    { no: 1, name: "vm_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "expose_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "lifecycle", kind: "message", T: DockerContainerCacheLifecycle },
+    { no: 4, name: "container_starts", kind: "message", T: ContainerStartSpan, repeated: true },
+    { no: 5, name: "runner_step_timeline", kind: "scalar", T: 12 /* ScalarType.BYTES */ },
+  ],
+);
+
+/**
+ * @generated from message stickydisk.v1.ReportDockerContainerCacheResponse
+ */
+const ReportDockerContainerCacheResponse = /*@__PURE__*/ proto3.makeMessageType(
+  "stickydisk.v1.ReportDockerContainerCacheResponse",
+  [],
 );
 
 
@@ -36450,6 +36766,23 @@ const StickyDiskService = {
       name: "ReportDockerBuild",
       I: ReportDockerBuildRequest,
       O: ReportDockerBuildResponse,
+      kind: MethodKind.Unary,
+    },
+    /**
+     * ReportDockerContainerCache is the structured docker container cache
+     * teardown report from the guest's job-completed hook: one lifecycle
+     * summary per job (setup/activation, manifest maintenance, eviction,
+     * shutdown, commit decision) plus per-container start spans captured from
+     * docker events. The guest ships only facts plus the expose_id from
+     * activation; all identity (sticky disk key, entity, installation, region,
+     * host, GitHub run/job IDs) is stamped host-side.
+     *
+     * @generated from rpc stickydisk.v1.StickyDiskService.ReportDockerContainerCache
+     */
+    reportDockerContainerCache: {
+      name: "ReportDockerContainerCache",
+      I: ReportDockerContainerCacheRequest,
+      O: ReportDockerContainerCacheResponse,
       kind: MethodKind.Unary,
     },
   }
@@ -36561,6 +36894,8 @@ const stickydisk_pb_CommitSkipReason = proto3.makeEnum(
     {no: 4, name: "COMMIT_SKIP_REASON_CLEANUP_ERROR", localName: "CLEANUP_ERROR"},
     {no: 5, name: "COMMIT_SKIP_REASON_AMBIGUOUS", localName: "AMBIGUOUS"},
     {no: 6, name: "COMMIT_SKIP_REASON_NO_EXPOSE", localName: "NO_EXPOSE"},
+    {no: 7, name: "COMMIT_SKIP_REASON_SERVER_DECLINED", localName: "SERVER_DECLINED"},
+    {no: 8, name: "COMMIT_SKIP_REASON_HOOK_SKIPPED", localName: "HOOK_SKIPPED"},
   ],
 );
 
@@ -36574,6 +36909,78 @@ const stickydisk_pb_IntegrityOutcome = proto3.makeEnum(
     {no: 1, name: "INTEGRITY_OUTCOME_PASSED", localName: "PASSED"},
     {no: 2, name: "INTEGRITY_OUTCOME_FAILED", localName: "FAILED"},
     {no: 3, name: "INTEGRITY_OUTCOME_SKIPPED", localName: "SKIPPED"},
+  ],
+);
+
+/**
+ * ContainerCacheSetupOutcome classifies how docker container cache
+ * activation ended for a job. Every non-ACTIVATED outcome falls back to
+ * uncached docker on the ephemeral root disk; the job still runs.
+ *
+ * @generated from enum stickydisk.v1.ContainerCacheSetupOutcome
+ */
+const stickydisk_pb_ContainerCacheSetupOutcome = proto3.makeEnum(
+  "stickydisk.v1.ContainerCacheSetupOutcome",
+  [
+    {no: 0, name: "CONTAINER_CACHE_SETUP_OUTCOME_UNSPECIFIED", localName: "UNSPECIFIED"},
+    {no: 1, name: "CONTAINER_CACHE_SETUP_OUTCOME_ACTIVATED", localName: "ACTIVATED"},
+    {no: 2, name: "CONTAINER_CACHE_SETUP_OUTCOME_DISABLED", localName: "DISABLED"},
+    {no: 3, name: "CONTAINER_CACHE_SETUP_OUTCOME_METADATA_UNAVAILABLE", localName: "METADATA_UNAVAILABLE"},
+    {no: 4, name: "CONTAINER_CACHE_SETUP_OUTCOME_EXPOSE_FAILED", localName: "EXPOSE_FAILED"},
+    {no: 5, name: "CONTAINER_CACHE_SETUP_OUTCOME_DEVICE_SIZE_TIMEOUT", localName: "DEVICE_SIZE_TIMEOUT"},
+    {no: 6, name: "CONTAINER_CACHE_SETUP_OUTCOME_MOUNT_FAILED", localName: "MOUNT_FAILED"},
+    {no: 7, name: "CONTAINER_CACHE_SETUP_OUTCOME_UNUSED", localName: "UNUSED"},
+  ],
+);
+
+/**
+ * ContainerCacheCommitReason is the structured reason behind the job's
+ * commit-or-elide decision for the container cache disk.
+ *
+ * @generated from enum stickydisk.v1.ContainerCacheCommitReason
+ */
+const stickydisk_pb_ContainerCacheCommitReason = proto3.makeEnum(
+  "stickydisk.v1.ContainerCacheCommitReason",
+  [
+    {no: 0, name: "CONTAINER_CACHE_COMMIT_REASON_UNSPECIFIED", localName: "UNSPECIFIED"},
+    {no: 1, name: "CONTAINER_CACHE_COMMIT_REASON_HASH_CHANGED", localName: "HASH_CHANGED"},
+    {no: 2, name: "CONTAINER_CACHE_COMMIT_REASON_NO_STORED_HASH", localName: "NO_STORED_HASH"},
+    {no: 3, name: "CONTAINER_CACHE_COMMIT_REASON_FORCED_MAINTENANCE", localName: "FORCED_MAINTENANCE"},
+    {no: 4, name: "CONTAINER_CACHE_COMMIT_REASON_ELIDE_MAINTENANCE_FAILED", localName: "ELIDE_MAINTENANCE_FAILED"},
+    {no: 5, name: "CONTAINER_CACHE_COMMIT_REASON_ELIDE_HASH_MATCH", localName: "ELIDE_HASH_MATCH"},
+    {no: 6, name: "CONTAINER_CACHE_COMMIT_REASON_HASH_UNAVAILABLE", localName: "HASH_UNAVAILABLE"},
+    {no: 7, name: "CONTAINER_CACHE_COMMIT_REASON_ELIDE_GC_TIMEOUT", localName: "ELIDE_GC_TIMEOUT"},
+  ],
+);
+
+/**
+ * ContainerCacheCommitPostOutcome is the result of the guest's
+ * /commit-docker-container POST to the host agent.
+ *
+ * @generated from enum stickydisk.v1.ContainerCacheCommitPostOutcome
+ */
+const stickydisk_pb_ContainerCacheCommitPostOutcome = proto3.makeEnum(
+  "stickydisk.v1.ContainerCacheCommitPostOutcome",
+  [
+    {no: 0, name: "CONTAINER_CACHE_COMMIT_POST_OUTCOME_UNSPECIFIED", localName: "UNSPECIFIED"},
+    {no: 1, name: "CONTAINER_CACHE_COMMIT_POST_OUTCOME_OK", localName: "OK"},
+    {no: 2, name: "CONTAINER_CACHE_COMMIT_POST_OUTCOME_FAILED", localName: "FAILED"},
+    {no: 3, name: "CONTAINER_CACHE_COMMIT_POST_OUTCOME_SKIPPED_MISSING_IDENTITY", localName: "SKIPPED_MISSING_IDENTITY"},
+  ],
+);
+
+/**
+ * ContainerServeClass classifies how a container's image was served.
+ *
+ * @generated from enum stickydisk.v1.ContainerServeClass
+ */
+const stickydisk_pb_ContainerServeClass = proto3.makeEnum(
+  "stickydisk.v1.ContainerServeClass",
+  [
+    {no: 0, name: "CONTAINER_SERVE_CLASS_UNSPECIFIED", localName: "UNSPECIFIED"},
+    {no: 1, name: "CONTAINER_SERVE_CLASS_CACHED", localName: "CACHED"},
+    {no: 2, name: "CONTAINER_SERVE_CLASS_PULLED_THIS_JOB", localName: "PULLED_THIS_JOB"},
+    {no: 3, name: "CONTAINER_SERVE_CLASS_UNKNOWN", localName: "UNKNOWN"},
   ],
 );
 
@@ -36607,6 +37014,8 @@ const stickydisk_pb_GetStickyDiskResponse = proto3.makeMessageType(
     { no: 5, name: "buildkitd_config", kind: "message", T: stickydisk_pb_BuildkitdConfig },
     { no: 6, name: "commit_early_deny", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
     { no: 7, name: "commit_early_deny_reason", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 8, name: "fstrim_timeout_secs", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 9, name: "fstrim_min_extent_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
   ],
 );
 
@@ -36787,6 +37196,12 @@ const stickydisk_pb_DockerJobLifecycle = proto3.makeMessageType(
     { no: 19, name: "buildkitd_sigkill_used", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
     { no: 20, name: "history_export_timed_out", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
     { no: 21, name: "history_prune_failed", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 22, name: "timeline_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 23, name: "timeline_truncated", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 24, name: "history_export_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 25, name: "traces_dropped_oversize", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
+    { no: 26, name: "traces_dropped_payload_cap", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
+    { no: 27, name: "records_dropped_payload_cap", kind: "scalar", T: 5 /* ScalarType.INT32 */ },
   ],
 );
 
@@ -36798,6 +37213,103 @@ const stickydisk_pb_ReportDockerBuildResponse = proto3.makeMessageType(
   () => [
     { no: 1, name: "docker_build_ids", kind: "scalar", T: 9 /* ScalarType.STRING */, repeated: true },
   ],
+);
+
+/**
+ * ContainerStartSpan is one container's create/start/die timing from the
+ * docker events stream, the read-side cost signal of the cache: docker
+ * pulls before create, so create-to-start never includes registry time for
+ * either class; it is the time to bring the container up from the layers
+ * on disk. Cached layers are cold reads from the Ceph-backed cache disk,
+ * pulled ones were just written and are page-cache warm, so the
+ * cached-vs-pulled split isolates the cache disk's read tax (the avoided
+ * pull is sized separately from image bytes).
+ *
+ * @generated from message stickydisk.v1.ContainerStartSpan
+ */
+const stickydisk_pb_ContainerStartSpan = proto3.makeMessageType(
+  "stickydisk.v1.ContainerStartSpan",
+  () => [
+    { no: 1, name: "container_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "image_ref", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "image_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 4, name: "serve_class", kind: "enum", T: proto3.getEnumType(stickydisk_pb_ContainerServeClass) },
+    { no: 5, name: "created_at_unix_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 6, name: "started_at_unix_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 7, name: "died_at_unix_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+  ],
+);
+
+/**
+ * DockerContainerCacheLifecycle is the per-job container cache lifecycle
+ * summary: activation, boot-path costs, manifest maintenance results,
+ * working-set composition, shutdown, and the commit funnel.
+ *
+ * @generated from message stickydisk.v1.DockerContainerCacheLifecycle
+ */
+const stickydisk_pb_DockerContainerCacheLifecycle = proto3.makeMessageType(
+  "stickydisk.v1.DockerContainerCacheLifecycle",
+  () => [
+    { no: 1, name: "setup_outcome", kind: "enum", T: proto3.getEnumType(stickydisk_pb_ContainerCacheSetupOutcome) },
+    { no: 2, name: "setup_duration_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 3, name: "first_format", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 4, name: "daemon_start_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 5, name: "cleanup_duration_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 6, name: "manifest_update_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 7, name: "manifest_update_failed", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 8, name: "manifest_rebuilt", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 9, name: "manifest_migrated", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 10, name: "overlay_gc_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 11, name: "overlay_gc_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 12, name: "shutdown_ms", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 13, name: "working_set_images", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 14, name: "working_set_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 15, name: "probation_images", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 16, name: "probation_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 17, name: "promoted_images", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 18, name: "promoted_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 19, name: "evicted_images", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 20, name: "evicted_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 21, name: "evicted_probation_images", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 22, name: "evicted_probation_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 23, name: "reclaimable_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 24, name: "total_refs", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 25, name: "pruned_refs", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 26, name: "material_prune", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 27, name: "fs_used_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 28, name: "fs_size_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 29, name: "image_layer_bytes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 31, name: "commit_reason", kind: "enum", T: proto3.getEnumType(stickydisk_pb_ContainerCacheCommitReason) },
+    { no: 32, name: "commit_post_outcome", kind: "enum", T: proto3.getEnumType(stickydisk_pb_ContainerCacheCommitPostOutcome) },
+    { no: 33, name: "current_container_hash", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 34, name: "stored_container_hash", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 35, name: "carryover_probation_images", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 36, name: "planned_prunes", kind: "scalar", T: 3 /* ScalarType.INT64 */ },
+    { no: 37, name: "maintenance_budget_exhausted", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+    { no: 38, name: "used_log_truncated", kind: "scalar", T: 8 /* ScalarType.BOOL */ },
+  ],
+);
+
+/**
+ * @generated from message stickydisk.v1.ReportDockerContainerCacheRequest
+ */
+const stickydisk_pb_ReportDockerContainerCacheRequest = proto3.makeMessageType(
+  "stickydisk.v1.ReportDockerContainerCacheRequest",
+  () => [
+    { no: 1, name: "vm_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 2, name: "expose_id", kind: "scalar", T: 9 /* ScalarType.STRING */ },
+    { no: 3, name: "lifecycle", kind: "message", T: stickydisk_pb_DockerContainerCacheLifecycle },
+    { no: 4, name: "container_starts", kind: "message", T: stickydisk_pb_ContainerStartSpan, repeated: true },
+    { no: 5, name: "runner_step_timeline", kind: "scalar", T: 12 /* ScalarType.BYTES */ },
+  ],
+);
+
+/**
+ * @generated from message stickydisk.v1.ReportDockerContainerCacheResponse
+ */
+const stickydisk_pb_ReportDockerContainerCacheResponse = proto3.makeMessageType(
+  "stickydisk.v1.ReportDockerContainerCacheResponse",
+  [],
 );
 
 
@@ -36916,6 +37428,7 @@ function getWorkspaceLocalParentToChown(mountPath, cwd = process.cwd()) {
 
 
 
+
 const execAsync = (0,external_util_.promisify)(external_child_process_.exec);
 // stickyDiskTimeoutMs states the max amount of time this action will wait for the VM agent to
 // expose the sticky disk from the storage agent, map it onto the host and then patch the drive
@@ -36942,6 +37455,8 @@ async function getStickyDisk(stickyDiskKey, commitIntent, options) {
         commit_early_deny_reason: response.commitEarlyDeny
             ? response.commitEarlyDenyReason || "denied by host policy"
             : "",
+        fstrim_timeout_secs: parseFstrimTimeoutSecs(response.fstrimTimeoutSecs),
+        fstrim_min_extent_bytes: parseFstrimMinExtentBytes(response.fstrimMinExtentBytes),
     };
 }
 // The VM agent's sticky-disk response can arrive before the guest kernel has
@@ -37067,6 +37582,8 @@ async function mountStickyDisk(stickyDiskKey, commitIntent, stickyDiskPath, sign
     // Saved before format/mount so the post step can report a guest-side
     // failure against the disk the host exposed.
     (0,core.saveState)("STICKYDISK_EXPOSE_ID", exposeId);
+    (0,core.saveState)("STICKYDISK_FSTRIM_TIMEOUT_SECS", String(stickyDiskResponse.fstrim_timeout_secs));
+    (0,core.saveState)("STICKYDISK_FSTRIM_MIN_EXTENT_BYTES", String(stickyDiskResponse.fstrim_min_extent_bytes));
     const commitEarlyDenyReason = stickyDiskResponse.commit_early_deny_reason;
     if (commitEarlyDenyReason !== "") {
         core.notice(`Sticky disk changes will not be committed for this job (${commitEarlyDenyReason}). The sticky disk is used as-is and any changes to it are discarded.`);
