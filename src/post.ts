@@ -270,9 +270,10 @@ async function run(): Promise<void> {
       );
     }
 
-    // Every input to the commit decision is known before unmount, so decide
-    // it here: the trim below is only worth running when the snapshot taken
-    // after unmount will be kept.
+    // Every input to the commit decision is known before unmount, so with a
+    // trim budget decide it here: the trim below is only worth running when
+    // the snapshot taken after unmount will be kept. Without a budget the
+    // step check stays where it was, after unmount.
     const onChangeVerdict =
       commitIntent === CommitIntent.ON_CHANGE
         ? evaluateOnChangeCommit(initialUsageBytesStr, fsDiskUsageBytes)
@@ -284,7 +285,7 @@ async function run(): Promise<void> {
       !(commitIntent === CommitIntent.IF_MISSING && wasFormatted !== "true") &&
       (onChangeVerdict?.commit ?? true);
     let failureCheck: StepFailureCheck | null = null;
-    if (commitPossible) {
+    if (fstrimTimeoutSecs > 0 && commitPossible) {
       core.info(
         "Checking for previous step failures before committing sticky disk",
       );
@@ -297,12 +298,7 @@ async function run(): Promise<void> {
     // the `used` sample above. Best-effort, bounded by the budget the host
     // handed out at mount time (0 = not enabled on this host yet), and a
     // no-op until the hypervisor negotiates discard for the device.
-    if (
-      fstrimTimeoutSecs > 0 &&
-      failureCheck &&
-      !failureCheck.error &&
-      !failureCheck.hasFailures
-    ) {
+    if (failureCheck && !failureCheck.error && !failureCheck.hasFailures) {
       const trim = await trimFilesystem(
         stickyDiskPath,
         fstrimTimeoutSecs,
