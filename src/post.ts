@@ -212,6 +212,9 @@ async function run(): Promise<void> {
     format_ms: parseStateMs(getState("STICKYDISK_FORMAT_MS")),
     mount_ms: parseStateMs(getState("STICKYDISK_MOUNT_MS")),
     unmount_ms: 0,
+    fstrim_outcome: "skipped",
+    fstrim_ms: 0,
+    fstrim_bytes: 0,
   };
   const skip = (reason: SkipReason): void => {
     report.skip_reason = reason;
@@ -304,6 +307,9 @@ async function run(): Promise<void> {
         fstrimTimeoutSecs,
         fstrimMinExtentBytes,
       );
+      report.fstrim_outcome = trim.outcome;
+      report.fstrim_ms = trim.durationMs;
+      report.fstrim_bytes = trim.trimmedBytes ?? 0;
       const trimmed =
         trim.trimmedBytes === null ? "" : `, ${formatBytes(trim.trimmedBytes)}`;
       const detail = trim.detail ? `: ${trim.detail}` : "";

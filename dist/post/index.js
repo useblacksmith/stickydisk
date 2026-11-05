@@ -37761,7 +37761,7 @@ async function flushBlockDevice(devicePath) {
     }
 }
 async function run() {
-    var _a;
+    var _a, _b;
     const stickyDiskPath = (0,core.getState)("STICKYDISK_PATH");
     const exposeId = (0,core.getState)("STICKYDISK_EXPOSE_ID");
     const stickyDiskKey = (0,core.getState)("STICKYDISK_KEY");
@@ -37785,6 +37785,9 @@ async function run() {
         format_ms: parseStateMs((0,core.getState)("STICKYDISK_FORMAT_MS")),
         mount_ms: parseStateMs((0,core.getState)("STICKYDISK_MOUNT_MS")),
         unmount_ms: 0,
+        fstrim_outcome: "skipped",
+        fstrim_ms: 0,
+        fstrim_bytes: 0,
     };
     const skip = (reason) => {
         report.skip_reason = reason;
@@ -37856,6 +37859,9 @@ async function run() {
         // no-op until the hypervisor negotiates discard for the device.
         if (failureCheck && !failureCheck.error && !failureCheck.hasFailures) {
             const trim = await trimFilesystem(stickyDiskPath, fstrimTimeoutSecs, fstrimMinExtentBytes);
+            report.fstrim_outcome = trim.outcome;
+            report.fstrim_ms = trim.durationMs;
+            report.fstrim_bytes = (_b = trim.trimmedBytes) !== null && _b !== void 0 ? _b : 0;
             const trimmed = trim.trimmedBytes === null ? "" : `, ${formatBytes(trim.trimmedBytes)}`;
             const detail = trim.detail ? `: ${trim.detail}` : "";
             core.info(`fstrim ${stickyDiskPath}: ${trim.outcome} in ${trim.durationMs}ms${trimmed}${detail}`);
