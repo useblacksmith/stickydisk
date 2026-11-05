@@ -70,17 +70,17 @@ describe("mount helpers", () => {
     expect(await findMountedDevice("/mnt/cache/nested", run)).toBeNull();
   });
 
-  it("runs fstrim under timeout and sudo with the path as one argv element", async () => {
+  it("runs fstrim under sudo timeout with the path as one argv element", async () => {
     const { run, calls } = recordingRunner({
-      timeout: { stdout: `${hostilePath}: 1 GiB (1073741824 bytes) trimmed\n` },
+      sudo: { stdout: `${hostilePath}: 1 GiB (1073741824 bytes) trimmed\n` },
     });
 
     const result = await trimFilesystem(hostilePath, 5, 0, run);
 
     expect(calls).toEqual([
       {
-        file: "timeout",
-        args: ["5", "sudo", "fstrim", "-v", "--", hostilePath],
+        file: "sudo",
+        args: ["timeout", "5", "fstrim", "-v", "--", hostilePath],
       },
     ]);
     expect(result.outcome).toBe("trimmed");
@@ -90,15 +90,15 @@ describe("mount helpers", () => {
 
   it("passes a positive minimum extent as fstrim -m and omits it otherwise", async () => {
     const { run, calls } = recordingRunner({
-      timeout: { stdout: `${hostilePath}: 0 B (0 bytes) trimmed\n` },
+      sudo: { stdout: `${hostilePath}: 0 B (0 bytes) trimmed\n` },
     });
 
     await trimFilesystem(hostilePath, 5, 4194304, run);
     await trimFilesystem(hostilePath, 5, 0, run);
 
     expect(calls.map((c) => c.args)).toEqual([
-      ["5", "sudo", "fstrim", "-v", "-m", "4194304", "--", hostilePath],
-      ["5", "sudo", "fstrim", "-v", "--", hostilePath],
+      ["timeout", "5", "fstrim", "-v", "-m", "4194304", "--", hostilePath],
+      ["timeout", "5", "fstrim", "-v", "--", hostilePath],
     ]);
   });
 
@@ -144,7 +144,7 @@ describe("mount helpers", () => {
         "/mnt/cache",
         5,
         0,
-        recordingRunner({ timeout: unsupported }).run,
+        recordingRunner({ sudo: unsupported }).run,
       ),
     ).toMatchObject({
       outcome: "failed",
@@ -161,7 +161,7 @@ describe("mount helpers", () => {
         "/mnt/cache",
         5,
         0,
-        recordingRunner({ timeout: timedOut }).run,
+        recordingRunner({ sudo: timedOut }).run,
       ),
     ).toMatchObject({
       outcome: "timed_out",
@@ -177,7 +177,7 @@ describe("mount helpers", () => {
         "/mnt/cache",
         5,
         0,
-        recordingRunner({ timeout: missing }).run,
+        recordingRunner({ sudo: missing }).run,
       ),
     ).toMatchObject({
       outcome: "failed",

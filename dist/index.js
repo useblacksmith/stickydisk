@@ -27513,15 +27513,17 @@ function parseTrimmedBytes(fstrimOutput) {
  * during the job are discarded before the device is unmounted and committed.
  * A positive `minExtentBytes` is passed as `fstrim -m`: free extents smaller
  * than that are left alone.
+ * `timeout` runs under sudo so it has the privilege to stop root's fstrim;
+ * otherwise fstrim would outlive its budget and keep the mount busy.
  * Never throws: a missing binary, a filesystem or device without discard
  * support, and the timeout all come back as a non-`trimmed` outcome.
  */
 async function trimFilesystem(mountPoint, timeoutSecs, minExtentBytes = 0, run = runCommand) {
     const start = Date.now();
     try {
-        const { stdout } = await run("timeout", [
+        const { stdout } = await run("sudo", [
+            "timeout",
             String(timeoutSecs),
-            "sudo",
             "fstrim",
             "-v",
             ...(minExtentBytes > 0 ? ["-m", String(minExtentBytes)] : []),
