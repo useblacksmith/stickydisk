@@ -395,7 +395,12 @@ async function run(): Promise<void> {
 
     // Check for previous step failures before committing
     if (!stickyDiskError) {
-      failureCheck ??= await checkPreviousStepFailures();
+      if (!failureCheck) {
+        core.info(
+          "Checking for previous step failures before committing sticky disk",
+        );
+        failureCheck = await checkPreviousStepFailures();
+      }
 
       if (failureCheck.error) {
         core.warning(

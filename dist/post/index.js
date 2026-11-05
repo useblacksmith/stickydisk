@@ -37922,7 +37922,10 @@ async function run() {
         }
         // Check for previous step failures before committing
         if (!stickyDiskError) {
-            failureCheck !== null && failureCheck !== void 0 ? failureCheck : (failureCheck = await checkPreviousStepFailures());
+            if (!failureCheck) {
+                core.info("Checking for previous step failures before committing sticky disk");
+                failureCheck = await checkPreviousStepFailures();
+            }
             if (failureCheck.error) {
                 core.warning(`Unable to check for previous step failures: ${failureCheck.error}`);
                 core.warning("Skipping sticky disk commit due to ambiguity in failure detection");
