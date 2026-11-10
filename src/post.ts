@@ -257,9 +257,14 @@ async function run(): Promise<void> {
       );
     }
 
-    // Drop page cache, dentries and inodes to ensure clean unmount
-    // This helps prevent "device is busy" errors during unmount
-    await execAsync("sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'");
+    // Dropping the page cache is not needed for a durable unmount: it only
+    // discards clean pages, the sync above already wrote the dirty ones, and
+    // umount writes back whatever remains before it returns. It does cost
+    // time, because it drops every cached page on the VM, not just this disk's.
+    // BLACKSMITH_STICKYDISK_DROP_CACHES=true restores it.
+    if (process.env.BLACKSMITH_STICKYDISK_DROP_CACHES === "true") {
+      await execAsync("sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'");
+    }
 
     // Unmount with retries; the duration covers the retries and is kept
     // when the last attempt fails.
