@@ -1,5 +1,6 @@
 import * as core from "@actions/core";
 import * as http from "http";
+import { TrimOutcome } from "./mount";
 
 // The guest-side view of one sticky disk use, posted once from the post step
 // to the Blacksmith agent's /internal endpoint. The agent joins it onto the
@@ -31,6 +32,10 @@ export interface MountReport {
   format_ms: number;
   mount_ms: number;
   unmount_ms: number;
+  // "skipped" when no trim ran (no budget, or no commit).
+  fstrim_outcome: TrimOutcome | "skipped";
+  fstrim_ms: number;
+  fstrim_bytes: number;
 }
 
 export interface MountReportTarget {
