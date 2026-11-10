@@ -37068,7 +37068,9 @@ async function mountStickyDisk(stickyDiskKey, commitIntent, stickyDiskPath, sign
     // failure against the disk the host exposed.
     (0,core.saveState)("STICKYDISK_EXPOSE_ID", exposeId);
     const commitEarlyDenyReason = stickyDiskResponse.commit_early_deny_reason;
-    if (commitEarlyDenyReason !== "") {
+    // A `commit: false` mount never commits, so a host-side denial changes
+    // nothing for this job and is not worth an annotation on the check.
+    if (commitEarlyDenyReason !== "" && commitIntent !== stickydisk_pb_CommitIntent.NEVER) {
         core.notice(`Sticky disk changes will not be committed for this job (${commitEarlyDenyReason}). The sticky disk is used as-is and any changes to it are discarded.`);
     }
     await waitForNonZeroDeviceSize(device, 10000);
