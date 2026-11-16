@@ -37024,7 +37024,26 @@ async function hasAnyStepFailed(runnerBasePath) {
     return result.hasFailures;
 }
 
+;// CONCATENATED MODULE: ./src/privilege.ts
+/**
+ * Shell prefix for a command that needs root. Job containers usually run as
+ * root and ship without sudo, so the command runs directly there and through
+ * sudo everywhere else.
+ */
+function sudoPrefix(uid) {
+    var _a;
+    if (uid === void 0) { uid = (_a = process.getuid) === null || _a === void 0 ? void 0 : _a.call(process); }
+    return uid === 0 ? "" : "sudo ";
+}
+/** Argv form of `sudoPrefix`, for commands run without a shell. */
+function asRoot(argv, uid) {
+    var _a;
+    if (uid === void 0) { uid = (_a = process.getuid) === null || _a === void 0 ? void 0 : _a.call(process); }
+    return uid === 0 ? argv : ["sudo", ...argv];
+}
+
 ;// CONCATENATED MODULE: ./src/mount.ts
+
 
 
 const execFileAsync = (0,external_util_.promisify)(external_child_process_.execFile);
@@ -37083,8 +37102,12 @@ async function getFilesystemUsedField(mountPoint, run = runCommand) {
     const lines = stdout.trim().split("\n");
     return lines[lines.length - 1].trim();
 }
-async function unmount(mountPoint, run = runCommand) {
-    await run("sudo", ["umount", "--", mountPoint]);
+async function unmount(mountPoint, run, uid) {
+    var _a;
+    if (run === void 0) { run = runCommand; }
+    if (uid === void 0) { uid = (_a = process.getuid) === null || _a === void 0 ? void 0 : _a.call(process); }
+    const [file, ...args] = asRoot(["umount", "--", mountPoint], uid);
+    await run(file, args);
 }
 
 ;// CONCATENATED MODULE: ./src/mount-report.ts
@@ -37185,7 +37208,9 @@ function parseStateMs(value) {
 
 
 
+
 const execAsync = (0,external_util_.promisify)(external_child_process_.exec);
+const SUDO = sudoPrefix();
 async function commitStickydisk(exposeId, stickyDiskKey, fsDiskUsageBytes) {
     core.info(`Requesting commit of sticky disk ${stickyDiskKey} with expose ID ${exposeId}`);
     if (!exposeId || !stickyDiskKey) {
@@ -37266,7 +37291,7 @@ async function flushBlockDevice(devicePath) {
     }
     const startTime = Date.now();
     try {
-        const { stdout, stderr } = await execAsync(`timeout ${FLUSH_TIMEOUT_SECS} sudo blockdev --flushbufs ${devicePath}; echo "EXIT_CODE:$?"`);
+        const { stdout, stderr } = await execAsync(`timeout ${FLUSH_TIMEOUT_SECS} ${SUDO}blockdev --flushbufs ${devicePath}; echo "EXIT_CODE:$?"`);
         const duration = Date.now() - startTime;
         // Parse exit code from output
         const exitCodeMatch = stdout.match(/EXIT_CODE:(\d+)/);
@@ -37365,7 +37390,7 @@ async function run() {
         }
         // Drop page cache, dentries and inodes to ensure clean unmount
         // This helps prevent "device is busy" errors during unmount
-        await execAsync("sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'");
+        await execAsync(`${SUDO}sh -c 'echo 3 > /proc/sys/vm/drop_caches'`);
         // Unmount with retries; the duration covers the retries and is kept
         // when the last attempt fails.
         const unmountStart = Date.now();

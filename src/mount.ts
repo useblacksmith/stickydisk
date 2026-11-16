@@ -1,5 +1,6 @@
 import { execFile } from "child_process";
 import { promisify } from "util";
+import { asRoot } from "./privilege";
 
 const execFileAsync = promisify(execFile);
 
@@ -83,6 +84,8 @@ export async function getFilesystemUsedField(
 export async function unmount(
   mountPoint: string,
   run: CommandRunner = runCommand,
+  uid: number | undefined = process.getuid?.(),
 ): Promise<void> {
-  await run("sudo", ["umount", "--", mountPoint]);
+  const [file, ...args] = asRoot(["umount", "--", mountPoint], uid);
+  await run(file, args);
 }

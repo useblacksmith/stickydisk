@@ -34,7 +34,7 @@ describe("mount helpers", () => {
 
     expect(await findMountedDevice(hostilePath, run)).toBe("/dev/vdb");
     expect(await getFilesystemUsedField(hostilePath, run)).toBe("123456");
-    await unmount(hostilePath, run);
+    await unmount(hostilePath, run, 1001);
 
     expect(calls).toEqual([
       {
@@ -44,6 +44,14 @@ describe("mount helpers", () => {
       { file: "df", args: ["-B1", "--output=used", "--", hostilePath] },
       { file: "sudo", args: ["umount", "--", hostilePath] },
     ]);
+  });
+
+  it("runs umount directly when already root", async () => {
+    const { run, calls } = recordingRunner();
+
+    await unmount(hostilePath, run, 0);
+
+    expect(calls).toEqual([{ file: "umount", args: ["--", hostilePath] }]);
   });
 
   it("falls back to the mount listing and matches the target exactly", async () => {

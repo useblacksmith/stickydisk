@@ -36906,6 +36906,72 @@ function getWorkspaceLocalParentToChown(mountPath, cwd = process.cwd()) {
     return null;
 }
 
+;// CONCATENATED MODULE: ./src/privilege.ts
+/**
+ * Shell prefix for a command that needs root. Job containers usually run as
+ * root and ship without sudo, so the command runs directly there and through
+ * sudo everywhere else.
+ */
+function sudoPrefix(uid) {
+    var _a;
+    if (uid === void 0) { uid = (_a = process.getuid) === null || _a === void 0 ? void 0 : _a.call(process); }
+    return uid === 0 ? "" : "sudo ";
+}
+/** Argv form of `sudoPrefix`, for commands run without a shell. */
+function asRoot(argv, uid) {
+    var _a;
+    if (uid === void 0) { uid = (_a = process.getuid) === null || _a === void 0 ? void 0 : _a.call(process); }
+    return uid === 0 ? argv : ["sudo", ...argv];
+}
+
+;// CONCATENATED MODULE: ./src/device.ts
+
+
+
+const execAsync = (0,external_util_.promisify)(external_child_process_.exec);
+// The shell exits 127 when it cannot find the command, which no amount of
+// polling fixes.
+const COMMAND_NOT_FOUND_EXIT_CODE = 127;
+function describeExecError(error) {
+    const stderr = error === null || error === void 0 ? void 0 : error.stderr;
+    if (typeof stderr === "string" && stderr.trim() !== "") {
+        return stderr.trim();
+    }
+    return error instanceof Error ? error.message : String(error);
+}
+// The VM agent's sticky-disk response can arrive before the guest kernel has
+// processed the virtio config-change interrupt that publishes the drive's real
+// capacity (the drive is hot-attached/hydrated in place), so the device can
+// transiently report a size of zero. Wait for a non-zero size before touching
+// the device.
+async function waitForNonZeroDeviceSize(device, timeoutMs, run = execAsync, sudo = sudoPrefix()) {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+        let lastError;
+        try {
+            const { stdout } = await run(`${sudo}blockdev --getsize64 ${device}`);
+            const size = parseInt(stdout.trim(), 10);
+            if (!isNaN(size) && size > 0) {
+                return;
+            }
+        }
+        catch (error) {
+            if ((error === null || error === void 0 ? void 0 : error.code) ===
+                COMMAND_NOT_FOUND_EXIT_CODE) {
+                throw new Error(`Cannot read the size of ${device}: ${describeExecError(error)}. Mounting a sticky disk needs root: run the job as root, or install sudo and util-linux in the job's container image.`);
+            }
+            // Device node may not exist yet; keep polling until the deadline.
+            lastError = error;
+        }
+        if (Date.now() >= deadline) {
+            throw new Error(lastError === undefined
+                ? `Device ${device} still reports zero size after ${timeoutMs}ms`
+                : `Could not read the size of ${device} after ${timeoutMs}ms: ${describeExecError(lastError)}`);
+        }
+        await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+}
+
 ;// CONCATENATED MODULE: ./src/main.ts
 
 
@@ -36916,7 +36982,10 @@ function getWorkspaceLocalParentToChown(mountPath, cwd = process.cwd()) {
 
 
 
-const execAsync = (0,external_util_.promisify)(external_child_process_.exec);
+
+
+const main_execAsync = (0,external_util_.promisify)(external_child_process_.exec);
+const SUDO = sudoPrefix();
 // stickyDiskTimeoutMs states the max amount of time this action will wait for the VM agent to
 // expose the sticky disk from the storage agent, map it onto the host and then patch the drive
 // into the VM.
@@ -36944,42 +37013,18 @@ async function getStickyDisk(stickyDiskKey, commitIntent, options) {
             : "",
     };
 }
-// The VM agent's sticky-disk response can arrive before the guest kernel has
-// processed the virtio config-change interrupt that publishes the drive's real
-// capacity (the drive is hot-attached/hydrated in place), so the device can
-// transiently report a size of zero. Wait for a non-zero size before touching
-// the device.
-async function waitForNonZeroDeviceSize(device, timeoutMs) {
-    const deadline = Date.now() + timeoutMs;
-    for (;;) {
-        try {
-            const { stdout } = await execAsync(`sudo blockdev --getsize64 ${device}`);
-            const size = parseInt(stdout.trim(), 10);
-            if (!isNaN(size) && size > 0) {
-                return;
-            }
-        }
-        catch {
-            // Device node may not exist yet; keep polling until the deadline.
-        }
-        if (Date.now() >= deadline) {
-            throw new Error(`Device ${device} still reports zero size after ${timeoutMs}ms`);
-        }
-        await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-}
 async function maybeFormatBlockDevice(device) {
     try {
         // Check if device is formatted with ext4
         try {
-            // Need sudo for blkid as it requires root to read block device metadata
-            const { stdout } = await execAsync(`sudo blkid -o value -s TYPE ${device}`);
+            // Need root for blkid as it requires root to read block device metadata
+            const { stdout } = await main_execAsync(`${SUDO}blkid -o value -s TYPE ${device}`);
             if (stdout.trim() === "ext4") {
                 core.debug(`Device ${device} is already formatted with ext4`);
                 try {
-                    // Need sudo for resize2fs as it requires root to modify block device
+                    // Need root for resize2fs as it requires root to modify block device
                     // This operation preserves existing filesystem ownership and permissions
-                    await execAsync(`sudo resize2fs -f ${device}`);
+                    await main_execAsync(`${SUDO}resize2fs -f ${device}`);
                     core.debug(`Resized ext4 filesystem on ${device}`);
                 }
                 catch (error) {
@@ -36996,11 +37041,11 @@ async function maybeFormatBlockDevice(device) {
         }
         // Format device with ext4, setting default ownership to current user.
         core.debug(`Formatting device ${device} with ext4`);
-        // Need sudo for mkfs.ext4 as it requires root to format block device
+        // Need root for mkfs.ext4 as it requires root to format block device
         // -m0: Disable reserved blocks (all space available to non-root users)
         // root_owner=$(id -u):$(id -g): Sets filesystem root directory owner to current (runner) user
         // This ensures the filesystem is owned by runner user from the start
-        await execAsync(`sudo mkfs.ext4 -m0 -E root_owner=$(id -u):$(id -g) -Enodiscard,lazy_itable_init=1,lazy_journal_init=1 -F ${device}`);
+        await main_execAsync(`${SUDO}mkfs.ext4 -m0 -E root_owner=$(id -u):$(id -g) -Enodiscard,lazy_itable_init=1,lazy_journal_init=1 -F ${device}`);
         core.debug(`Successfully formatted ${device} with ext4`);
         // Remove lost+found directory to prevent permission issues.
         // mkfs.ext4 always creates lost+found with root:root 0700 permissions for fsck recovery.
@@ -37011,11 +37056,11 @@ async function maybeFormatBlockDevice(device) {
         core.debug(`Removing lost+found directory from ${device}`);
         const tempMount = `/tmp/stickydisk-init-${Date.now()}`;
         try {
-            await execAsync(`sudo mkdir -p ${tempMount}`);
-            await execAsync(`sudo mount -o noinit_itable ${device} ${tempMount}`);
-            await execAsync(`sudo rm -rf ${tempMount}/lost+found`);
-            await execAsync(`sudo umount ${tempMount}`);
-            await execAsync(`sudo rmdir ${tempMount}`);
+            await main_execAsync(`${SUDO}mkdir -p ${tempMount}`);
+            await main_execAsync(`${SUDO}mount -o noinit_itable ${device} ${tempMount}`);
+            await main_execAsync(`${SUDO}rm -rf ${tempMount}/lost+found`);
+            await main_execAsync(`${SUDO}umount ${tempMount}`);
+            await main_execAsync(`${SUDO}rmdir ${tempMount}`);
             core.debug(`Removed lost+found directory from ${device}`);
         }
         catch (error) {
@@ -37032,23 +37077,23 @@ async function maybeFormatBlockDevice(device) {
     }
 }
 // Creates the mount point directory, keeping it (and any workspace-local
-// parent) owned by the runner user. Parents are created without sudo first so
+// parent) owned by the runner user. Parents are created as the current user first so
 // that intermediate directories under $HOME (e.g. ~/.cache) stay writable by
-// the runner; sudo is only needed for system directories like /nix or /mnt.
+// the runner; root is only needed for system directories like /nix or /mnt.
 async function createMountPoint(stickyDiskPath) {
     const parentPath = external_path_.dirname(stickyDiskPath);
     try {
-        await execAsync(`mkdir -p ${shellQuote(parentPath)}`);
+        await main_execAsync(`mkdir -p ${shellQuote(parentPath)}`);
     }
     catch (error) {
         core.debug(`Could not create mount parent ${parentPath} as current user: ${error instanceof Error ? error.message : String(error)}`);
     }
-    await execAsync(`sudo mkdir -p ${shellQuote(stickyDiskPath)}`);
-    await execAsync(`sudo chown $(id -u):$(id -g) ${shellQuote(stickyDiskPath)}`);
+    await main_execAsync(`${SUDO}mkdir -p ${shellQuote(stickyDiskPath)}`);
+    await main_execAsync(`${SUDO}chown $(id -u):$(id -g) ${shellQuote(stickyDiskPath)}`);
     const workspaceParentPath = getWorkspaceLocalParentToChown(stickyDiskPath);
     if (workspaceParentPath) {
         // Nested workspace mounts such as .nx/cache need a writable parent so tools can recreate them.
-        await execAsync(`sudo chown $(id -u):$(id -g) ${shellQuote(workspaceParentPath)}`);
+        await main_execAsync(`${SUDO}chown $(id -u):$(id -g) ${shellQuote(workspaceParentPath)}`);
     }
 }
 async function mountStickyDisk(stickyDiskKey, commitIntent, stickyDiskPath, signal, controller, timings) {
@@ -37092,10 +37137,10 @@ async function mountStickyDisk(stickyDiskKey, commitIntent, stickyDiskPath, sign
     try {
         // noinit_itable stops the background zeroing of a non-trivial portion of
         // the device (uninitialized inode tables), which is unnecessary here.
-        await execAsync(`sudo mount -o noinit_itable ${shellQuote(device)} ${shellQuote(stickyDiskPath)}`);
+        await main_execAsync(`${SUDO}mount -o noinit_itable ${shellQuote(device)} ${shellQuote(stickyDiskPath)}`);
         // After mounting, ensure the mounted filesystem is owned by runner user
         // This is important because the mount operation might change ownership
-        await execAsync(`sudo chown $(id -u):$(id -g) ${shellQuote(stickyDiskPath)}`);
+        await main_execAsync(`${SUDO}chown $(id -u):$(id -g) ${shellQuote(stickyDiskPath)}`);
     }
     finally {
         timings.mountMs = Date.now() - mountStart;
@@ -37114,7 +37159,7 @@ async function ensureFallbackDirectory(stickyDiskPath) {
 }
 async function getInitialDiskUsage(stickyDiskPath) {
     try {
-        const { stdout } = await execAsync(`df -B1 --output=used ${shellQuote(stickyDiskPath)} | tail -n1`);
+        const { stdout } = await main_execAsync(`df -B1 --output=used ${shellQuote(stickyDiskPath)} | tail -n1`);
         const value = stdout.trim();
         if (value && !isNaN(parseInt(value, 10))) {
             return value;

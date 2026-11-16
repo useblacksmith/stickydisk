@@ -13,8 +13,10 @@ import {
   parseStateMs,
   sendMountReport,
 } from "./mount-report";
+import { sudoPrefix } from "./privilege";
 
 const execAsync = promisify(exec);
+const SUDO = sudoPrefix();
 
 async function commitStickydisk(
   exposeId: string,
@@ -131,7 +133,7 @@ async function flushBlockDevice(devicePath: string): Promise<void> {
   const startTime = Date.now();
   try {
     const { stdout, stderr } = await execAsync(
-      `timeout ${FLUSH_TIMEOUT_SECS} sudo blockdev --flushbufs ${devicePath}; echo "EXIT_CODE:$?"`,
+      `timeout ${FLUSH_TIMEOUT_SECS} ${SUDO}blockdev --flushbufs ${devicePath}; echo "EXIT_CODE:$?"`,
     );
     const duration = Date.now() - startTime;
 
@@ -259,7 +261,7 @@ async function run(): Promise<void> {
 
     // Drop page cache, dentries and inodes to ensure clean unmount
     // This helps prevent "device is busy" errors during unmount
-    await execAsync("sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'");
+    await execAsync(`${SUDO}sh -c 'echo 3 > /proc/sys/vm/drop_caches'`);
 
     // Unmount with retries; the duration covers the retries and is kept
     // when the last attempt fails.
