@@ -27416,6 +27416,8 @@ var core = __nccwpck_require__(7484);
 var external_util_ = __nccwpck_require__(9023);
 // EXTERNAL MODULE: external "child_process"
 var external_child_process_ = __nccwpck_require__(5317);
+// EXTERNAL MODULE: external "fs"
+var external_fs_ = __nccwpck_require__(9896);
 ;// CONCATENATED MODULE: external "fs/promises"
 const promises_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("fs/promises");
 // EXTERNAL MODULE: external "path"
@@ -36987,6 +36989,7 @@ async function waitForNonZeroDeviceSize(device, timeoutMs, run = execAsync, sudo
 
 
 
+
 const main_execAsync = (0,external_util_.promisify)(external_child_process_.exec);
 const SUDO = sudoPrefix();
 // stickyDiskTimeoutMs states the max amount of time this action will wait for the VM agent to
@@ -37161,6 +37164,7 @@ async function ensureFallbackDirectory(stickyDiskPath) {
         // user, e.g. under the workspace or $HOME.
         try {
             await promises_namespaceObject.mkdir(stickyDiskPath, { recursive: true });
+            await promises_namespaceObject.access(stickyDiskPath, external_fs_.constants.W_OK);
             core.info(`Sticky disk unavailable; created empty directory at ${stickyDiskPath} as the current user`);
         }
         catch {

@@ -2,6 +2,7 @@ import { getInput, saveState } from "@actions/core";
 import * as core from "@actions/core";
 import { promisify } from "util";
 import { exec } from "child_process";
+import { constants as fsConstants } from "fs";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { createStickyDiskClient, getAgentEndpoint } from "./utils";
@@ -260,6 +261,7 @@ async function ensureFallbackDirectory(stickyDiskPath: string): Promise<void> {
     // user, e.g. under the workspace or $HOME.
     try {
       await fs.mkdir(stickyDiskPath, { recursive: true });
+      await fs.access(stickyDiskPath, fsConstants.W_OK);
       core.info(
         `Sticky disk unavailable; created empty directory at ${stickyDiskPath} as the current user`,
       );
