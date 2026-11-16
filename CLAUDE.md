@@ -39,7 +39,7 @@ git add dist/
 - `src/` - Source TypeScript files
   - `main.ts` - Main action entry point
   - `post.ts` - Post-action cleanup
-  - `step-checker.ts` - Checks for failed workflow steps
+  - `job-status.ts` - Maps the job status input to the post step's commit decision
   - `utils.ts` - Utility functions
 - `dist/` - Compiled JavaScript output (auto-generated, should be committed)
 - `action.yml` - GitHub Action configuration

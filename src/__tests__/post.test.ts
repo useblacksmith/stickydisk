@@ -5,6 +5,7 @@ import { createStickyDiskClient } from "../utils";
 
 jest.mock("@actions/core", () => ({
   getState: jest.fn(),
+  getInput: jest.fn(),
   info: jest.fn(),
   debug: jest.fn(),
   warning: jest.fn(),
