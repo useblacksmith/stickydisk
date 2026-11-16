@@ -260,8 +260,16 @@ async function run(): Promise<void> {
     }
 
     // Drop page cache, dentries and inodes to ensure clean unmount
-    // This helps prevent "device is busy" errors during unmount
-    await execAsync(`${SUDO}sh -c 'echo 3 > /proc/sys/vm/drop_caches'`);
+    // This helps prevent "device is busy" errors during unmount. It is only a
+    // hint: a container without --privileged has a read-only /proc/sys, and
+    // the unmount below retries anyway.
+    try {
+      await execAsync(`${SUDO}sh -c 'echo 3 > /proc/sys/vm/drop_caches'`);
+    } catch (error) {
+      core.warning(
+        `Could not drop the page cache before unmount: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
 
     // Unmount with retries; the duration covers the retries and is kept
     // when the last attempt fails.
