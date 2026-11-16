@@ -27416,6 +27416,8 @@ var core = __nccwpck_require__(7484);
 var external_util_ = __nccwpck_require__(9023);
 // EXTERNAL MODULE: external "child_process"
 var external_child_process_ = __nccwpck_require__(5317);
+;// CONCATENATED MODULE: external "fs/promises"
+const promises_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("fs/promises");
 // EXTERNAL MODULE: external "path"
 var external_path_ = __nccwpck_require__(6928);
 ;// CONCATENATED MODULE: ./node_modules/@bufbuild/protobuf/dist/esm/service-type.js
@@ -36984,6 +36986,7 @@ async function waitForNonZeroDeviceSize(device, timeoutMs, run = execAsync, sudo
 
 
 
+
 const main_execAsync = (0,external_util_.promisify)(external_child_process_.exec);
 const SUDO = sudoPrefix();
 // stickyDiskTimeoutMs states the max amount of time this action will wait for the VM agent to
@@ -37154,7 +37157,15 @@ async function ensureFallbackDirectory(stickyDiskPath) {
         core.info(`Sticky disk unavailable; created empty directory at ${stickyDiskPath} so subsequent steps see a cache miss instead of a missing path`);
     }
     catch (error) {
-        core.warning(`Failed to create fallback directory at ${stickyDiskPath}: ${error instanceof Error ? error.message : String(error)}`);
+        // Without root or sudo the path can still be creatable as the current
+        // user, e.g. under the workspace or $HOME.
+        try {
+            await promises_namespaceObject.mkdir(stickyDiskPath, { recursive: true });
+            core.info(`Sticky disk unavailable; created empty directory at ${stickyDiskPath} as the current user`);
+        }
+        catch {
+            core.warning(`Failed to create fallback directory at ${stickyDiskPath}: ${error instanceof Error ? error.message : String(error)}`);
+        }
     }
 }
 async function getInitialDiskUsage(stickyDiskPath) {

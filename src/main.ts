@@ -2,6 +2,7 @@ import { getInput, saveState } from "@actions/core";
 import * as core from "@actions/core";
 import { promisify } from "util";
 import { exec } from "child_process";
+import * as fs from "fs/promises";
 import * as path from "path";
 import { createStickyDiskClient, getAgentEndpoint } from "./utils";
 import { CommitIntent, commitIntentFromMode } from "./commit-intent";
@@ -255,9 +256,18 @@ async function ensureFallbackDirectory(stickyDiskPath: string): Promise<void> {
       `Sticky disk unavailable; created empty directory at ${stickyDiskPath} so subsequent steps see a cache miss instead of a missing path`,
     );
   } catch (error) {
-    core.warning(
-      `Failed to create fallback directory at ${stickyDiskPath}: ${error instanceof Error ? error.message : String(error)}`,
-    );
+    // Without root or sudo the path can still be creatable as the current
+    // user, e.g. under the workspace or $HOME.
+    try {
+      await fs.mkdir(stickyDiskPath, { recursive: true });
+      core.info(
+        `Sticky disk unavailable; created empty directory at ${stickyDiskPath} as the current user`,
+      );
+    } catch {
+      core.warning(
+        `Failed to create fallback directory at ${stickyDiskPath}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 }
 
