@@ -6,8 +6,11 @@ const config = {
   testEnvironment: "node",
   moduleFileExtensions: ["ts", "js"],
   transform: {
-    "^.+\\.ts$": "ts-jest",
+    // The @buf packages ship ES modules only; ts-jest compiles them to
+    // CommonJS alongside our sources.
+    "^.+\\.[tj]s$": ["ts-jest", { tsconfig: { allowJs: true } }],
   },
+  transformIgnorePatterns: ["/node_modules/(?!@buf/)"],
   testMatch: ["**/__tests__/**/*.test.ts"],
 };
 
