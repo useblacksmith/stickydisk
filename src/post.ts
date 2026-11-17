@@ -13,8 +13,10 @@ import {
   parseStateMs,
   sendMountReport,
 } from "./mount-report";
+import { sudoPrefix } from "./privilege";
 
 const execAsync = promisify(exec);
+const SUDO = sudoPrefix();
 
 async function commitStickydisk(
   exposeId: string,
@@ -131,7 +133,7 @@ async function flushBlockDevice(devicePath: string): Promise<void> {
   const startTime = Date.now();
   try {
     const { stdout, stderr } = await execAsync(
-      `timeout ${FLUSH_TIMEOUT_SECS} sudo blockdev --flushbufs ${devicePath}; echo "EXIT_CODE:$?"`,
+      `timeout ${FLUSH_TIMEOUT_SECS} ${SUDO}blockdev --flushbufs ${devicePath}; echo "EXIT_CODE:$?"`,
     );
     const duration = Date.now() - startTime;
 
@@ -258,8 +260,16 @@ async function run(): Promise<void> {
     }
 
     // Drop page cache, dentries and inodes to ensure clean unmount
-    // This helps prevent "device is busy" errors during unmount
-    await execAsync("sudo sh -c 'echo 3 > /proc/sys/vm/drop_caches'");
+    // This helps prevent "device is busy" errors during unmount. It is only a
+    // hint: a container without --privileged has a read-only /proc/sys, and
+    // the unmount below retries anyway.
+    try {
+      await execAsync(`${SUDO}sh -c 'echo 3 > /proc/sys/vm/drop_caches'`);
+    } catch (error) {
+      core.warning(
+        `Could not drop the page cache before unmount: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
 
     // Unmount with retries; the duration covers the retries and is kept
     // when the last attempt fails.
