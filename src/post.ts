@@ -5,7 +5,7 @@ import { getState } from "@actions/core";
 import { createStickyDiskClient } from "./utils";
 import { CommitIntent, commitIntentFromMode } from "./commit-intent";
 import { evaluateOnChangeCommit, formatBytes } from "./on-change";
-import { checkPreviousStepFailures } from "./step-checker";
+import { JOB_STATUS_INPUT, jobOutcomeFromStatus } from "./job-status";
 import { findMountedDevice, getFilesystemUsedField, unmount } from "./mount";
 import {
   MountReport,
@@ -346,51 +346,34 @@ async function run(): Promise<void> {
       }
     }
 
-    // Check for previous step failures before committing
+    // A failed or cancelled job can leave the disk half-written, so only a
+    // successful job commits.
     if (!stickyDiskError) {
-      core.info(
-        "Checking for previous step failures before committing sticky disk",
-      );
-      const failureCheck = await checkPreviousStepFailures();
+      const jobStatus = core.getInput(JOB_STATUS_INPUT);
+      const jobOutcome = jobOutcomeFromStatus(jobStatus);
 
-      if (failureCheck.error) {
+      if (jobOutcome === "unknown") {
         core.warning(
-          `Unable to check for previous step failures: ${failureCheck.error}`,
-        );
-        core.warning(
-          "Skipping sticky disk commit due to ambiguity in failure detection",
+          `Skipping sticky disk commit: cannot tell whether the job succeeded (job status is "${jobStatus}")`,
         );
         skip("step_check_error");
         await cleanupStickyDiskWithoutCommit(
           exposeId,
           stickyDiskKey,
-          "unable to determine whether previous steps failed",
+          "unable to determine whether the job succeeded",
         );
-      } else if (failureCheck.hasFailures) {
+      } else if (jobOutcome === "failed") {
         core.warning(
-          `Found ${failureCheck.failedCount} failed/cancelled steps in previous workflow steps`,
-        );
-        if (failureCheck.failedSteps) {
-          failureCheck.failedSteps.forEach((step) => {
-            core.warning(
-              `  - Step: ${step.stepName || step.action || "unknown"} (${step.result})`,
-            );
-          });
-        }
-        core.warning(
-          "Skipping sticky disk commit due to previous step failures",
+          `Skipping sticky disk commit: the job status is "${jobStatus}"`,
         );
         skip("prior_step_failure");
         await cleanupStickyDiskWithoutCommit(
           exposeId,
           stickyDiskKey,
-          `${failureCheck.failedCount} previous step(s) failed or were cancelled`,
+          `the job status is "${jobStatus}"`,
         );
       } else {
-        // No failures detected
-        core.info(
-          "No previous step failures detected, requesting sticky disk commit",
-        );
+        core.info("Job has succeeded so far, requesting sticky disk commit");
         await commitStickydisk(exposeId, stickyDiskKey, fsDiskUsageBytes);
       }
     } else {

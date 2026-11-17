@@ -36871,157 +36871,23 @@ function evaluateOnChangeCommit(initialUsageBytesStr, fsDiskUsageBytes) {
     };
 }
 
-// EXTERNAL MODULE: external "fs"
-var external_fs_ = __nccwpck_require__(9896);
-// EXTERNAL MODULE: external "path"
-var external_path_ = __nccwpck_require__(6928);
-;// CONCATENATED MODULE: ./src/step-checker.ts
-
-
-
-// The runner's TaskResult enum spells it "Canceled", not "Cancelled", so a cancelled step
-// was read as a clean run. Accept either spelling, and any casing.
-const FAILURE_RESULT = /^(?:failed|cancell?ed)$/i;
-/**
- * Checks GitHub Actions runner logs for failed or cancelled steps
- * @param runnerBasePath - Base path to runner directory (default: auto-detect)
- * @returns Promise<StepFailureCheck> - Object containing failure status and details
- */
-async function checkPreviousStepFailures(runnerBasePath) {
-    try {
-        // If no base path provided, try to detect the runner root
-        if (!runnerBasePath) {
-            // In GitHub Actions, we're typically in /home/runner/_work/{repo}/{repo}
-            // We need to go up to /home/runner to find _diag
-            const cwd = process.cwd();
-            if (cwd.includes("/_work/")) {
-                // Extract the runner root from the path
-                runnerBasePath = cwd.substring(0, cwd.indexOf("/_work/"));
-            }
-            else {
-                // Fallback to checking common locations
-                const possiblePaths = ["/home/runner", process.env.RUNNER_ROOT || ""];
-                for (const path of possiblePaths) {
-                    try {
-                        await external_fs_.promises.access(path);
-                        runnerBasePath = path;
-                        break;
-                    }
-                    catch {
-                        // Continue to next path
-                    }
-                }
-                if (!runnerBasePath) {
-                    runnerBasePath = process.cwd();
-                }
-            }
-        }
-        // Find the Worker log file in _diag directory
-        const diagPath = external_path_.join(runnerBasePath, "_diag");
-        // Log the detected paths for debugging
-        core.debug(`Detected runner base path: ${runnerBasePath}`);
-        core.debug(`Looking for _diag at: ${diagPath}`);
-        // Check if _diag directory exists
-        try {
-            await external_fs_.promises.access(diagPath);
-        }
-        catch {
-            return {
-                hasFailures: false,
-                failedCount: 0,
-                error: `_diag directory not found at ${diagPath}`,
-            };
-        }
-        // Find Worker log files (format: Worker_YYYYMMDD-HHMMSS-utc.log)
-        const files = await external_fs_.promises.readdir(diagPath);
-        const workerLogFiles = files.filter((f) => f.startsWith("Worker_") && f.endsWith(".log"));
-        if (workerLogFiles.length === 0) {
-            return {
-                hasFailures: false,
-                failedCount: 0,
-                error: "No Worker log files found",
-            };
-        }
-        // Use the most recent Worker log
-        const workerLogPath = external_path_.join(diagPath, workerLogFiles.sort().pop());
-        const logContent = await external_fs_.promises.readFile(workerLogPath, "utf-8");
-        // Patterns to match failed or cancelled steps
-        const failurePatterns = [
-            /"result":\s*"(?:failed|cancell?ed)"/gi,
-            /Step result:\s*(?:failed|cancell?ed)/gi,
-        ];
-        // Count total failures
-        let failedCount = 0;
-        for (const pattern of failurePatterns) {
-            const matches = logContent.match(pattern);
-            if (matches) {
-                failedCount += matches.length;
-            }
-        }
-        // Extract detailed failure information
-        const failedSteps = [];
-        // Regex to extract JSON objects containing step information
-        const jsonStepPattern = /\{[^{}]*"result":\s*"(?:failed|cancell?ed)"[^{}]*\}/gi;
-        const jsonMatches = logContent.match(jsonStepPattern);
-        if (jsonMatches) {
-            for (const match of jsonMatches) {
-                try {
-                    // Try to find a larger JSON context that includes action name and error messages
-                    const startIndex = logContent.indexOf(match);
-                    const contextStart = Math.max(0, logContent.lastIndexOf("{", startIndex - 500));
-                    const contextEnd = logContent.indexOf("}.", startIndex) + 1;
-                    if (contextEnd > contextStart) {
-                        const contextJson = logContent.substring(contextStart, contextEnd);
-                        const stepData = JSON.parse(contextJson);
-                        if (FAILURE_RESULT.test(stepData.result)) {
-                            failedSteps.push({
-                                action: stepData.action,
-                                stepName: stepData.stepName || stepData.displayName,
-                                result: stepData.result,
-                                errorMessages: stepData.errorMessages,
-                            });
-                        }
-                    }
-                }
-                catch {
-                    // If we can't parse the full context, at least record the failure
-                    try {
-                        const basicStep = JSON.parse(match);
-                        if (FAILURE_RESULT.test(basicStep.result)) {
-                            failedSteps.push({
-                                result: basicStep.result,
-                            });
-                        }
-                    }
-                    catch {
-                        // Skip malformed JSON
-                        core.debug("Skipping malformed JSON in log parsing");
-                    }
-                }
-            }
-        }
-        return {
-            hasFailures: failedCount > 0,
-            failedCount,
-            failedSteps: failedSteps.length > 0 ? failedSteps : undefined,
-        };
+;// CONCATENATED MODULE: ./src/job-status.ts
+// The `job-status` input defaults to `${{ job.status }}`, which the runner
+// evaluates again when it starts the post step, so the post step sees the
+// job's status at that moment. Unlike the runner's _diag logs, it is available
+// inside job containers.
+const JOB_STATUS_INPUT = "job-status";
+function jobOutcomeFromStatus(status) {
+    switch (status.trim().toLowerCase()) {
+        case "success":
+            return "success";
+        case "failure":
+        case "cancelled":
+        case "canceled":
+            return "failed";
+        default:
+            return "unknown";
     }
-    catch (error) {
-        return {
-            hasFailures: false,
-            failedCount: 0,
-            error: `Error reading logs: ${error instanceof Error ? error.message : String(error)}`,
-        };
-    }
-}
-/**
- * Simple boolean check for any failures
- * @param runnerBasePath - Base path to runner directory (optional, will auto-detect)
- * @returns Promise<boolean> - true if any steps failed or were cancelled
- */
-async function hasAnyStepFailed(runnerBasePath) {
-    const result = await checkPreviousStepFailures(runnerBasePath);
-    return result.hasFailures;
 }
 
 ;// CONCATENATED MODULE: ./src/privilege.ts
@@ -37450,30 +37316,23 @@ async function run() {
                 return;
             }
         }
-        // Check for previous step failures before committing
+        // A failed or cancelled job can leave the disk half-written, so only a
+        // successful job commits.
         if (!stickyDiskError) {
-            core.info("Checking for previous step failures before committing sticky disk");
-            const failureCheck = await checkPreviousStepFailures();
-            if (failureCheck.error) {
-                core.warning(`Unable to check for previous step failures: ${failureCheck.error}`);
-                core.warning("Skipping sticky disk commit due to ambiguity in failure detection");
+            const jobStatus = core.getInput(JOB_STATUS_INPUT);
+            const jobOutcome = jobOutcomeFromStatus(jobStatus);
+            if (jobOutcome === "unknown") {
+                core.warning(`Skipping sticky disk commit: cannot tell whether the job succeeded (job status is "${jobStatus}")`);
                 skip("step_check_error");
-                await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey, "unable to determine whether previous steps failed");
+                await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey, "unable to determine whether the job succeeded");
             }
-            else if (failureCheck.hasFailures) {
-                core.warning(`Found ${failureCheck.failedCount} failed/cancelled steps in previous workflow steps`);
-                if (failureCheck.failedSteps) {
-                    failureCheck.failedSteps.forEach((step) => {
-                        core.warning(`  - Step: ${step.stepName || step.action || "unknown"} (${step.result})`);
-                    });
-                }
-                core.warning("Skipping sticky disk commit due to previous step failures");
+            else if (jobOutcome === "failed") {
+                core.warning(`Skipping sticky disk commit: the job status is "${jobStatus}"`);
                 skip("prior_step_failure");
-                await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey, `${failureCheck.failedCount} previous step(s) failed or were cancelled`);
+                await cleanupStickyDiskWithoutCommit(exposeId, stickyDiskKey, `the job status is "${jobStatus}"`);
             }
             else {
-                // No failures detected
-                core.info("No previous step failures detected, requesting sticky disk commit");
+                core.info("Job has succeeded so far, requesting sticky disk commit");
                 await commitStickydisk(exposeId, stickyDiskKey, fsDiskUsageBytes);
             }
         }
