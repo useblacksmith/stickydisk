@@ -63,3 +63,7 @@ jobs:
         with:
           name: dist
           path: dist/
+
+      - name: Run Tests
+        if: ${{ !cancelled() }}
+        run: npm test
