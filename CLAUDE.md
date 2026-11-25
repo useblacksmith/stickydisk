@@ -33,6 +33,7 @@ git add dist/
 1. **Array Types**: Use `T[]` syntax instead of `Array<T>` (enforced by ESLint)
 2. **TypeScript**: All source code should be in TypeScript
 3. **Build Output**: Always rebuild (`npm run build`) after making changes to ensure dist/ files are updated
+4. **Comments**: Don't comment obvious code. Do add concise comments when the rationale (the "why") behind a decision isn't obvious from the code itself — e.g., non-obvious business rules, workarounds, performance trade-offs, or constraints that would require digging through history to understand
 
 ## Project Structure
 
